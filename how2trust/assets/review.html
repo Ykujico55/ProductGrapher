@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="How2Trust Review">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>交付验收报告 · How2Trust</title>
+  <style>@@CSS@@</style>
+</head>
+<body>
+  <header>
+    <strong class="brand">How2Trust</strong><span class="bar-divider"></span><span class="bar-name">交付验收</span>
+    <button class="export" id="export-decisions" type="button">导出复核记录</button>
+  </header>
+  <main>
+    <div class="intro">
+      <div><h1>交付验收报告</h1><p id="task"></p></div>
+      <div class="revisions"><span>对照基线</span><code id="base"></code><span>验收版本</span><code id="target"></code></div>
+    </div>
+    <nav id="categories" aria-label="验收分类"></nav>
+    <div class="workbench">
+      <aside>
+        <div class="list-title"><h2 id="list-title"></h2><span class="count" id="list-count"></span></div>
+        <div class="list-tools">
+          <input id="search" type="search" placeholder="查找项目或文件" aria-label="查找项目或文件">
+          <select id="filter" aria-label="筛选验收项目"></select>
+        </div>
+        <div id="items" aria-label="验收项目"></div>
+      </aside>
+      <article id="detail" aria-label="验收详情"></article>
+    </div>
+    <details class="appendix" id="policies" hidden><summary>清单中明示的禁止规则</summary><ul id="policy-list"></ul></details>
+    <details class="appendix" id="diagnostics" hidden><summary>分析记录</summary><ul id="diagnostic-list"></ul></details>
+  </main>
+  <div id="notice" role="status" aria-live="polite"></div>
+  <script type="application/json" id="report-data">@@DATA@@</script>
+  <script>@@JS@@</script>
+</body>
+</html>

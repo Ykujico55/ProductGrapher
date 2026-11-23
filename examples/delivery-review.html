@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="generator" content="How2Trust Review">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>交付验收报告 · How2Trust</title>
+  <style>:root {
+  color-scheme: light;
+  --ink: #172e2d;
+  --muted: #576c68;
+  --line: #d8e2da;
+  --green: #17684e;
+  --mono: "IBM Plex Mono", Consolas, "Microsoft YaHei", monospace;
+  font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  background: #f5f7f4;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button,
+select,
+summary {
+  cursor: pointer;
+}
+button {
+  border: 0;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+select:focus-visible {
+  outline: 2px solid #1b795a;
+  outline-offset: 2px;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: #132f29;
+  color: #f6fbf6;
+  padding: 0 clamp(16px, 4vw, 64px);
+  min-height: 60px;
+}
+.brand {
+  font-size: 22px;
+  letter-spacing: -1px;
+}
+.bar-divider {
+  height: 17px;
+  width: 1px;
+  background: #607c70;
+}
+.bar-name {
+  font-size: 14px;
+}
+.export {
+  margin-left: auto;
+  color: white;
+  background: #26483f;
+  border: 1px solid #577166;
+  font-size: 14px;
+  padding: 7px 13px;
+  border-radius: 6px;
+}
+main {
+  padding: 32px clamp(16px, 4vw, 64px) 70px;
+  max-width: 1850px;
+  margin: auto;
+}
+.intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+h1 {
+  font-size: clamp(25px, 3vw, 36px);
+  letter-spacing: -0.05em;
+}
+h2 {
+  font-size: 19px;
+}
+h3 {
+  font-size: 16px;
+}
+h4 {
+  font-size: 14px;
+}
+p {
+  line-height: 1.6;
+}
+#task {
+  margin-top: 7px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.revisions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: baseline;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 38%;
+  padding-top: 5px;
+}
+.revisions span {
+  white-space: nowrap;
+}
+.revisions code {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+#categories {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.category {
+  padding: 15px 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+.category[aria-pressed="true"] {
+  border-color: #4f876c;
+  background: #e8f2e8;
+  box-shadow: inset 0 2px #427756;
+}
+.category strong {
+  font-size: 16px;
+}
+.category small {
+  font-size: 13px;
+  color: var(--muted);
+}
+.workbench {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: minmax(235px, 29%) minmax(0, 1fr);
+  min-height: 55vh;
+  overflow: hidden;
+}
+aside {
+  background: #fafbf8;
+  border-right: 1px solid var(--line);
+  min-width: 0;
+}
+.list-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 16px 12px;
+}
+.list-title h2 {
+  font-size: 16px;
+}
+.count,
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+.list-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin: 0 14px 12px;
+}
+input,
+select,
+textarea {
+  border: 1px solid #c7d2c9;
+  border-radius: 5px;
+  padding: 7px 8px;
+  background: white;
+  min-width: 0;
+  font-size: 14px;
+}
+.list-tools select {
+  max-width: 128px;
+}
+#items {
+  overflow-y: auto;
+  max-height: 76vh;
+  border-top: 1px solid var(--line);
+}
+.item {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  padding: 12px 16px;
+}
+.item:hover,
+.more:hover,
+.category:hover {
+  background: #eef4ec;
+}
+.item[aria-current="true"] {
+  background: #e4eee4;
+  box-shadow: inset 3px 0 #417650;
+}
+.item strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.item small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.more {
+  margin: 8px;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+#detail {
+  padding: clamp(16px, 2vw, 32px);
+  min-width: 0;
+}
+.pane-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.tag {
+  display: inline-block;
+  line-height: 1.45;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #e8eeec;
+  color: #3e5750;
+}
+.tag.good {
+  background: #dcf0e5;
+  color: #18573d;
+}
+.tag.bad {
+  background: #fae2dd;
+  color: #913d2d;
+}
+.tag.warn {
+  background: #f6edcd;
+  color: #6d5420;
+}
+.detail-title {
+  font-size: clamp(19px, 2.1vw, 27px);
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+  margin-bottom: 8px;
+}
+.copy {
+  color: #405650;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.section {
+  border-top: 1px solid var(--line);
+  padding-top: 17px;
+  margin-top: 20px;
+}
+.section h3 {
+  margin-bottom: 10px;
+}
+.empty {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 16px;
+}
+.section .empty {
+  padding: 0;
+}
+.check,
+.link-row,
+.source-item {
+  margin-top: 7px;
+  border: 1px solid var(--line);
+  background: #fafbf9;
+  border-radius: 5px;
+  padding: 9px 10px;
+}
+.check summary {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.check summary .tag {
+  margin-left: 8px;
+}
+.check-label {
+  margin-left: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.check dl {
+  font-size: 14px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 10px;
+}
+.check dt {
+  font-weight: 600;
+}
+.check dd {
+  margin: 0;
+  font-family: var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.output {
+  margin: 8px 0 0;
+  padding: 10px;
+  font: 13px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  max-height: 270px;
+  background: #edf1ed;
+}
+.link-row,
+.source-item {
+  width: 100%;
+  display: block;
+  text-align: left;
+  font-size: 14px;
+  color: #235f4a;
+  overflow-wrap: anywhere;
+}
+.link-row:hover,
+.source-item:hover {
+  border-color: #789884;
+}
+.source-item[aria-pressed="true"] {
+  border-color: #688b73;
+  background: #e8f0e7;
+}
+.diff-box {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.diff-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: #f1f5f0;
+  font: 13px/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+.diff-title select {
+  font-size: 12px;
+  max-width: 100%;
+}
+.diff-scroll {
+  overflow: auto;
+  max-height: 490px;
+}
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 13px/1.55 var(--mono);
+}
+.diff-table td {
+  vertical-align: top;
+}
+.diff-table .num {
+  color: #64756c;
+  width: 3.5em;
+  text-align: right;
+  padding: 0 6px;
+  user-select: none;
+  border-right: 1px solid #dce4dc;
+}
+.diff-table .code {
+  white-space: pre;
+  padding: 0 8px;
+}
+.diff-table .plus {
+  background: #e8f4e7;
+}
+.diff-table .minus {
+  background: #f9e8e6;
+}
+.diff-table .focus {
+  box-shadow: inset 4px 0 #96711d;
+}
+.diff-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+}
+.action {
+  border-radius: 4px;
+  background: #e3ece3;
+  color: #245539;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+.action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.review-form {
+  display: grid;
+  gap: 8px;
+  max-width: 700px;
+}
+.review-form select {
+  justify-self: start;
+}
+.review-form textarea {
+  resize: vertical;
+  min-height: 64px;
+}
+.review-form button {
+  justify-self: start;
+}
+.appendix {
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+}
+.appendix li {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+#notice {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: #153b2d;
+  color: white;
+  border-radius: 6px;
+  padding: 9px 15px;
+  box-shadow: 0 2px 8px #0002;
+}
+#notice:empty {
+  display: none;
+}
+@media (max-width: 780px) {
+  main {
+    padding: 18px 12px 50px;
+  }
+  .intro {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .revisions {
+    max-width: 100%;
+  }
+  #categories {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .category {
+    padding: 10px;
+  }
+  .workbench {
+    grid-template-columns: 1fr;
+  }
+  aside {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  #items {
+    max-height: 215px;
+  }
+  .list-tools {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+</style>
+</head>
+<body>
+  <header>
+    <strong class="brand">How2Trust</strong><span class="bar-divider"></span><span class="bar-name">交付验收</span>
+    <button class="export" id="export-decisions" type="button">导出复核记录</button>
+  </header>
+  <main>
+    <div class="intro">
+      <div><h1>交付验收报告</h1><p id="task"></p></div>
+      <div class="revisions"><span>对照基线</span><code id="base"></code><span>验收版本</span><code id="target"></code></div>
+    </div>
+    <nav id="categories" aria-label="验收分类"></nav>
+    <div class="workbench">
+      <aside>
+        <div class="list-title"><h2 id="list-title"></h2><span class="count" id="list-count"></span></div>
+        <div class="list-tools">
+          <input id="search" type="search" placeholder="查找项目或文件" aria-label="查找项目或文件">
+          <select id="filter" aria-label="筛选验收项目"></select>
+        </div>
+        <div id="items" aria-label="验收项目"></div>
+      </aside>
+      <article id="detail" aria-label="验收详情"></article>
+    </div>
+    <details class="appendix" id="policies" hidden><summary>清单中明示的禁止规则</summary><ul id="policy-list"></ul></details>
+    <details class="appendix" id="diagnostics" hidden><summary>分析记录</summary><ul id="diagnostic-list"></ul></details>
+  </main>
+  <div id="notice" role="status" aria-live="polite"></div>
+  <script type="application/json" id="report-data">{"base":"BASE_DIR","changes":[{"afterHash":"9492f249e69982bfa8d33bbbf146afa6b35d223f58356266122eb2627deaf8f4","afterMode":"100644","beforeHash":"4999107b8dbf2d3794ac193979b741fe18c6d8207bf3322bb49ea313b19bcb2b","beforeMode":"100644","binary":false,"file":"orders.py","hunks":[{"lines":[" def cancel_order(order):","+    try:","+        order[\"state\"] = \"cancelled\"","+    except Exception:","+        pass","     return order","+","+","+def export_ledger(orders):","+    return \"\\n\".join(order[\"id\"] for order in orders)","+","+","+def count_cancelled(orders):","+    return sum(order[\"state\"] == \"cancelled\" for order in orders)"],"newCount":14,"newStart":1,"oldCount":2,"oldStart":1}],"status":"modified"}],"codeSnapshot":"e092146b74bdbaf6dbad4001105554439def1a938566126855e407a5b0fbc788","defenses":[{"cost":"\u88ab\u6355\u83b7\u7684\u9519\u8bef\u4f1a\u8df3\u8fc7\u6b63\u5e38\u5904\u7406\u8def\u5f84\uff0c\u8c03\u7528\u8005\u53ef\u80fd\u65e0\u6cd5\u89c2\u5bdf\u5931\u8d25\u3002","detail":"\u5904\u7406\u5668 Exception \u4ee5 pass \u7ed3\u675f\u3002","end":5,"file":"orders.py","id":"defense:0f8c2ad6234441e55b5f609f","line":4,"question":"\u9884\u671f\u5141\u8bb8\u5ffd\u7565\u54ea\u79cd\u5177\u4f53\u5f02\u5e38\uff1f\u8c03\u7528\u8005\u5982\u4f55\u533a\u5206\u6210\u529f\u548c\u5931\u8d25\uff1f","requirementIds":["R1","R2","R3"],"rule":"swallowed-exception","side":"after","snippet":"    except Exception:\n        pass","status":"review","symbol":"cancel_order","title":"\u5bbd\u6cdb\u6355\u83b7\u540e\u7ee7\u7eed\u6267\u884c"}],"diagnostics":[],"fingerprint":"f28a05c8f482a06987020287b5ffc415750a5986801025c425447bc9507eb176","forbidden":["orders.py::export_ledger"],"forbiddenDefenses":[],"inputFingerprint":"d04b604821483b5b21ec706b8c1d70d800eed8f5968253badd1c4c2da8052ab3","outputFiles":[],"requirements":[{"checks":[{"actualExit":0,"argv":["{python}","{spec_dir}/probe.py","pending"],"baseline":{"actualExit":0,"argv":["{python}","{spec_dir}/probe.py","pending"],"detail":"\u6807\u51c6\u8f93\u51fa\u4e0e\u671f\u671b\u4e0d\u7b26","expected":{"exit":0,"stdout":"accepted cancelled"},"name":"\u53d6\u6d88\u4e00\u7b14\u5f85\u53d1\u8d27\u8ba2\u5355","output":"accepted pending\n","outputTruncated":false,"status":"failed","stderr":""},"detail":"\u9000\u51fa\u7801\u548c\u6807\u51c6\u8f93\u51fa\u7b26\u5408\u7ea6\u5b9a\u3002\u57fa\u7ebf\u672a\u6ee1\u8db3\u8be5\u68c0\u67e5\uff0c\u4ea4\u4ed8\u7248\u672c\u901a\u8fc7\u3002","expected":{"exit":0,"stdout":"accepted cancelled"},"name":"\u53d6\u6d88\u4e00\u7b14\u5f85\u53d1\u8d27\u8ba2\u5355","output":"accepted cancelled\n","outputTruncated":false,"status":"passed","stderr":""}],"evidence":[{"change":"modified","end":5,"file":"orders.py","id":"scope:092e1dc201e737b212b5b843","line":2,"mapping":"symbol","side":"after","status":"mapped","symbol":"cancel_order"}],"id":"R1","scope":["orders.py::cancel_order"],"status":"passed","text":"\u5f85\u53d1\u8d27\u8ba2\u5355\u53ef\u4ee5\u53d6\u6d88"},{"checks":[{"actualExit":0,"argv":["{python}","{spec_dir}/probe.py","shipped"],"baseline":{"actualExit":0,"argv":["{python}","{spec_dir}/probe.py","shipped"],"detail":"\u6807\u51c6\u8f93\u51fa\u4e0e\u671f\u671b\u4e0d\u7b26","expected":{"exit":0,"stdout":"rejected shipped"},"name":"\u5c1d\u8bd5\u53d6\u6d88\u4e00\u7b14\u5df2\u53d1\u8d27\u8ba2\u5355","output":"accepted shipped\n","outputTruncated":false,"status":"failed","stderr":""},"detail":"\u6807\u51c6\u8f93\u51fa\u4e0e\u671f\u671b\u4e0d\u7b26\u3002\u57fa\u7ebf\u548c\u4ea4\u4ed8\u7248\u672c\u5747\u672a\u6ee1\u8db3\u8fd9\u9879\u68c0\u67e5\u3002","expected":{"exit":0,"stdout":"rejected shipped"},"name":"\u5c1d\u8bd5\u53d6\u6d88\u4e00\u7b14\u5df2\u53d1\u8d27\u8ba2\u5355","output":"accepted cancelled\n","outputTruncated":false,"status":"failed","stderr":""}],"evidence":[{"change":"modified","end":5,"file":"orders.py","id":"scope:092e1dc201e737b212b5b843","line":2,"mapping":"symbol","side":"after","status":"mapped","symbol":"cancel_order"}],"id":"R2","scope":["orders.py::cancel_order"],"status":"failed","text":"\u5df2\u53d1\u8d27\u8ba2\u5355\u5e94\u62d2\u7edd\u53d6\u6d88\u5e76\u4fdd\u7559\u539f\u72b6\u6001"},{"checks":[],"evidence":[{"change":"modified","end":5,"file":"orders.py","id":"scope:092e1dc201e737b212b5b843","line":2,"mapping":"symbol","side":"after","status":"mapped","symbol":"cancel_order"}],"id":"R3","scope":["orders.py::cancel_order"],"status":"unverified","text":"\u91cd\u590d\u53d6\u6d88\u987b\u4fdd\u6301\u5e42\u7b49"}],"schema":"how2trust.review.v1","scope":[{"afterRanges":[{"end":5,"line":2}],"beforeRanges":[],"change":"modified","detail":"\u547d\u4e2d\u4efb\u52a1\u6e05\u5355\u4e2d\u7684\u7b26\u53f7\u9009\u62e9\u5668\u3002","end":5,"file":"orders.py","forbiddenSelectors":[],"id":"scope:092e1dc201e737b212b5b843","line":2,"mapping":"symbol","matchedSelectors":["orders.py::cancel_order"],"requirementIds":["R1","R2","R3"],"side":"after","snippet":"    try:\n        order[\"state\"] = \"cancelled\"\n    except Exception:\n        pass","status":"mapped","symbol":"cancel_order","title":"cancel_order"},{"afterRanges":[{"end":14,"line":13}],"beforeRanges":[],"change":"added","detail":"\u8fd9\u9879\u6539\u52a8\u6ca1\u6709\u5339\u914d\u4efb\u4f55\u9700\u6c42\u7684\u8303\u56f4\u9009\u62e9\u5668\uff0c\u8bf7\u6838\u5bf9\u5b83\u670d\u52a1\u7684\u9700\u6c42\u3002","end":14,"file":"orders.py","forbiddenSelectors":[],"id":"scope:0b236523c68526e80722e0a9","line":13,"mapping":"none","matchedSelectors":[],"requirementIds":[],"side":"after","snippet":"def count_cancelled(orders):\n    return sum(order[\"state\"] == \"cancelled\" for order in orders)","status":"unmapped","symbol":"count_cancelled","title":"count_cancelled"},{"afterRanges":[{"end":10,"line":9}],"beforeRanges":[],"change":"added","detail":"\u8fd9\u9879\u6539\u52a8\u547d\u4e2d\u4e86\u4efb\u52a1\u660e\u786e\u7981\u6b62\u53d8\u66f4\u7684\u8303\u56f4\u3002","end":10,"file":"orders.py","forbiddenSelectors":["orders.py::export_ledger"],"id":"scope:f3071f8ae1f3848538cd050c","line":9,"mapping":"none","matchedSelectors":[],"requirementIds":[],"side":"after","snippet":"def export_ledger(orders):\n    return \"\\n\".join(order[\"id\"] for order in orders)","status":"forbidden","symbol":"export_ledger","title":"export_ledger"}],"target":"TARGET_DIR","targetFingerprint":"9222274b12ed4950b139a3e4a99e7e8544fabbad8b5ce518ba576f5493f823b5","task":"\u4e3a\u8ba2\u5355\u589e\u52a0\u53d6\u6d88\u64cd\u4f5c\u3002\u5f85\u53d1\u8d27\u8ba2\u5355\u53ef\u4ee5\u53d6\u6d88\uff0c\u5df2\u53d1\u8d27\u8ba2\u5355\u5e94\u62d2\u7edd\u53d6\u6d88\u5e76\u4fdd\u7559\u539f\u72b6\u6001\u3002\u91cd\u590d\u53d6\u6d88\u987b\u4fdd\u6301\u5e42\u7b49\u3002\u672c\u6b21\u4e0d\u589e\u52a0\u8ba2\u5355\u5bfc\u51fa\u529f\u80fd\u3002"}</script>
+  <script>(() => {
+  "use strict";
+  const report = JSON.parse(document.querySelector("#report-data").textContent);
+  const $ = (id) => document.getElementById(id);
+  const modeInfo = {
+    requirements: ["要求完成情况", "验收要求"],
+    defenses: ["防御逻辑", "防御逻辑复核"],
+    scope: ["改动范围", "变更归属"],
+    changes: ["文件差异", "变更文件"],
+  };
+  const rows = Object.fromEntries(
+    Object.keys(modeInfo).map((key) => [key, report[key] || []]),
+  );
+  const byFile = new Map(rows.changes.map((change) => [change.file, change]));
+  const reqs = new Map(rows.requirements.map((req) => [req.id, req]));
+  const statusText = {
+    passed: "检查通过",
+    failed: "检查失败",
+    error: "执行异常",
+    unverified: "未验证",
+    not_run: "未运行",
+    skipped: "未运行",
+    partial: "部分验证",
+    review: "待复核",
+    mapped: "已匹配约定范围",
+    forbidden: "违反明示规则",
+    unmapped: "待说明归属",
+    added: "新增",
+    modified: "修改",
+    deleted: "删除",
+    typechanged: "类型变化",
+  };
+  const decisionLabels = {
+    requirements: {
+      accept: "确认满足要求",
+      reject: "要求尚未满足",
+      more: "需要补充证据",
+    },
+    defenses: {
+      accept: "防御有依据",
+      reject: "判定为过度防御",
+      more: "需要说明失败场景",
+    },
+    scope: {
+      accept: "属于任务范围",
+      reject: "判定为超出范围",
+      more: "需要说明归属",
+    },
+  };
+  const pageSize = 80;
+  let mode = "requirements",
+    active = null,
+    limit = pageSize,
+    query = "",
+    filter = "all";
+  let judgments = {},
+    toastTimer;
+  const decisionKey = "how2trust.review.1." + report.fingerprint;
+  try {
+    judgments = JSON.parse(localStorage.getItem(decisionKey) || "{}") || {};
+  } catch {
+    /* storage unavailable */
+  }
+  function el(tag, cls, text) {
+    const elem = document.createElement(tag);
+    if (cls) elem.className = cls;
+    if (text !== undefined && text !== null) elem.textContent = String(text);
+    return elem;
+  }
+  function button(cls, text, handler) {
+    const elem = el("button", cls, text);
+    elem.type = "button";
+    elem.addEventListener("click", handler);
+    return elem;
+  }
+  function field(parent, term, value) {
+    if (value === undefined || value === null || value === "") return;
+    parent.append(el("dt", "", term), el("dd", "", value));
+  }
+  function section(parent, title) {
+    const box = el("section", "section");
+    box.append(el("h3", "", title));
+    parent.append(box);
+    return box;
+  }
+  function notice(message) {
+    clearTimeout(toastTimer);
+    $("notice").textContent = message;
+    toastTimer = setTimeout(() => ($("notice").textContent = ""), 2800);
+  }
+  const showValue = (value) =>
+    typeof value === "object" ? JSON.stringify(value) : String(value);
+  const keyOf = (row) => (mode === "changes" ? row.file : row.id);
+  const decisionId = (row) => mode + "|" + keyOf(row);
+  const textOf = (row) =>
+    mode === "requirements"
+      ? row.text
+      : mode === "changes"
+        ? row.file
+        : row.title || row.symbol || row.file;
+  function tag(status) {
+    const tone = ["failed", "error", "forbidden"].includes(status)
+      ? "bad"
+      : ["passed", "mapped"].includes(status)
+        ? "good"
+        : ["review", "unmapped", "partial", "unverified"].includes(status)
+          ? "warn"
+          : "";
+    return el("span", "tag " + tone, statusText[status] || status || "待复核");
+  }
+  function summary(key) {
+    const list = rows[key];
+    const count = (status) =>
+      list.filter((row) => row.status === status).length;
+    if (key === "requirements")
+      return count("passed") + " / " + list.length + " 项检查通过";
+    if (key === "defenses")
+      return list.length + " 项发现 · " + count("forbidden") + " 项违反规则";
+    if (key === "scope")
+      return (
+        count("unmapped") + " 项待说明 · " + count("forbidden") + " 项越界"
+      );
+    return list.length + " 个变更文件";
+  }
+  function renderCategories() {
+    const nav = $("categories");
+    nav.replaceChildren();
+    for (const [key, [label]] of Object.entries(modeInfo)) {
+      const tab = button("category", "", () => switchMode(key));
+      tab.append(el("strong", "", label), el("small", "", summary(key)));
+      tab.setAttribute("aria-pressed", String(mode === key));
+      nav.append(tab);
+    }
+  }
+  function switchMode(key, target) {
+    mode = key;
+    query = "";
+    filter = "all";
+    limit = pageSize;
+    active = target || null;
+    $("search").value = "";
+    const options = [["all", "全部"]];
+    if (mode !== "changes")
+      options.push(
+        ["attention", "需要关注"],
+        ["open", "未复核"],
+        ["reviewed", "已复核"],
+      );
+    $("filter").replaceChildren(
+      ...options.map(([value, label]) => new Option(label, value)),
+    );
+    renderCategories();
+    renderList();
+    renderDetail();
+  }
+  function matches(row) {
+    const decision = judgments[decisionId(row)];
+    if (filter === "open" && decision?.choice) return false;
+    if (filter === "reviewed" && !decision?.choice) return false;
+    if (
+      filter === "attention" &&
+      ["passed", "mapped"].includes(row.status) &&
+      !["more", "reject"].includes(decision?.choice)
+    )
+      return false;
+    if (!query) return true;
+    return [
+      keyOf(row),
+      textOf(row),
+      row.file,
+      row.symbol,
+      row.target,
+      row.detail,
+      ...(row.requirementIds || []),
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(query));
+  }
+  function renderList() {
+    const visible = rows[mode].filter(matches);
+    if (!active || !visible.includes(active)) active = visible[0] || null;
+    $("list-title").textContent = modeInfo[mode][1];
+    $("list-count").textContent = visible.length + " 项";
+    const list = $("items");
+    list.replaceChildren();
+    for (const row of visible.slice(0, limit)) {
+      const node = button("item", "", () => {
+        active = row;
+        renderList();
+        renderDetail();
+      });
+      node.setAttribute("aria-current", String(active === row));
+      node.append(tag(row.status));
+      const decision = judgments[decisionId(row)];
+      if (decision?.choice)
+        node.append(
+          el(
+            "span",
+            "tag",
+            decisionLabels[mode]?.[decision.choice] || "已复核",
+          ),
+        );
+      node.append(el("strong", "", textOf(row)));
+      if (mode === "scope" || mode === "defenses")
+        node.append(el("small", "", location(row)));
+      list.append(node);
+    }
+    if (visible.length > limit)
+      list.append(
+        button("more", "显示更多", () => {
+          limit += pageSize;
+          renderList();
+        }),
+      );
+    if (!visible.length) list.append(el("p", "empty", "没有符合条件的项目。"));
+  }
+  function location(point) {
+    const side = point.side === "before" ? "基线" : "交付";
+    if (!point.line) return point.file;
+    return (
+      point.file +
+      " · " +
+      side +
+      " L" +
+      point.line +
+      (point.end > point.line ? "–" + point.end : "")
+    );
+  }
+  function checkRecord(check) {
+    const box = el("details", "check");
+    box.open = ["partial", "failed", "error"].includes(check.status);
+    const summary = el("summary", "", check.name || "验证检查");
+    if (check.baseline) {
+      summary.append(
+        el("span", "check-label", "基线"),
+        tag(check.baseline.status),
+        el("span", "check-label", "交付"),
+      );
+    }
+    summary.append(tag(check.status));
+    box.append(summary);
+    const info = el("dl");
+    field(info, "执行参数", JSON.stringify(check.argv || []));
+    const expect = check.expected || {};
+    field(info, "预期退出码", expect.exit);
+    if (typeof expect.stdout === "string")
+      field(info, "预期标准输出", JSON.stringify(expect.stdout));
+    if (expect.contains !== undefined)
+      field(info, "输出必须包含", showValue(expect.contains));
+    field(info, "实际退出码", check.actualExit);
+    field(info, "判定依据", check.detail);
+    box.append(info);
+    if (check.status === "passed" && check.baseline?.status === "passed") {
+      box.append(
+        el(
+          "p",
+          "muted",
+          "基线也满足这一检查。若要验证新增行为，需要能区分两个版本的检查。",
+        ),
+      );
+    }
+    appendOutput(box, check);
+    if (check.baseline) {
+      const base = el("details", "check");
+      const baseHead = el("summary", "", "同一检查在基线上的结果");
+      baseHead.append(tag(check.baseline.status));
+      base.append(baseHead);
+      const baseInfo = el("dl");
+      field(baseInfo, "退出码", check.baseline.actualExit);
+      field(baseInfo, "判定依据", check.baseline.detail);
+      base.append(baseInfo);
+      appendOutput(base, check.baseline);
+      box.append(base);
+    }
+    return box;
+  }
+  function appendOutput(box, check) {
+    for (const [field, label] of [
+      ["output", "标准输出"],
+      ["stderr", "标准错误"],
+    ]) {
+      if (check[field])
+        box.append(el("h4", "", label), el("pre", "output", check[field]));
+    }
+    if (check.outputTruncated)
+      box.append(el("p", "muted", "日志仅显示已保存的前 128 KB。"));
+  }
+  function hunkRange(hunk) {
+    return (
+      "−" +
+      hunk.oldStart +
+      "," +
+      hunk.oldCount +
+      "  +" +
+      hunk.newStart +
+      "," +
+      hunk.newCount
+    );
+  }
+  function decodeLines(hunk) {
+    let old = hunk.oldStart,
+      next = hunk.newStart;
+    return hunk.lines.map((text) => {
+      const prefix = text[0];
+      return {
+        old: prefix === "+" ? null : old++,
+        next: prefix === "-" ? null : next++,
+        text,
+        prefix,
+      };
+    });
+  }
+  function drawDiff(host, change, point) {
+    if (!change) {
+      host.append(el("p", "empty", "该位置没有对应的文件差异。"));
+      return;
+    }
+    if (!change.hunks?.length) {
+      host.append(
+        el(
+          "p",
+          "empty",
+          change.binary
+            ? "该文件含二进制内容，无文本行差异。"
+            : "此项未包含文本差异块。",
+        ),
+      );
+      return;
+    }
+    const side = point?.side === "before" ? "old" : "next";
+    const line = point?.line || 0,
+      end = point?.end || line;
+    const contains = (h) => {
+      const start = side === "old" ? h.oldStart : h.newStart;
+      const count = side === "old" ? h.oldCount : h.newCount;
+      return count > 0 && start <= end && start + count > line;
+    };
+    const match = line ? change.hunks.findIndex(contains) : -1;
+    let index = Math.max(0, match),
+      page = 0;
+    if (match >= 0) {
+      const hit = decodeLines(change.hunks[index]).findIndex(
+        (row) => row[side] >= line && row[side] <= end && row[side] !== null,
+      );
+      page = Math.max(0, Math.floor(hit / pageSize));
+    }
+    function render() {
+      host.replaceChildren();
+      if (line && match < 0)
+        host.append(
+          el(
+            "p",
+            "muted",
+            "证据位置未落入可显示的差异块，下面列出该文件的改动。",
+          ),
+        );
+      const wrapper = el("div", "diff-box");
+      const title = el("div", "diff-title");
+      title.append(el("span", "", change.file));
+      const select = el("select");
+      select.setAttribute("aria-label", "选择差异块");
+      change.hunks.forEach((h, i) => select.add(new Option(hunkRange(h), i)));
+      select.selectedIndex = index;
+      select.onchange = () => {
+        index = select.selectedIndex;
+        page = 0;
+        render();
+      };
+      title.append(select);
+      wrapper.append(title);
+      const scroll = el("div", "diff-scroll"),
+        table = el("table", "diff-table");
+      table.setAttribute("aria-label", "基线与交付差异");
+      const head = table.createTHead().insertRow();
+      ["旧行", "新行", "代码"].forEach((label) =>
+        head.append(el("th", "", label)),
+      );
+      const body = table.createTBody(),
+        lines = decodeLines(change.hunks[index]);
+      for (const row of lines.slice(page * pageSize, (page + 1) * pageSize)) {
+        const tr = body.insertRow();
+        tr.className =
+          row.prefix === "+" ? "plus" : row.prefix === "-" ? "minus" : "";
+        if (line && row[side] !== null && row[side] >= line && row[side] <= end)
+          tr.classList.add("focus");
+        tr.append(
+          el("td", "num", row.old),
+          el("td", "num", row.next),
+          el("td", "code", row.text),
+        );
+      }
+      scroll.append(table);
+      wrapper.append(scroll);
+      if (lines.length > pageSize) {
+        const controls = el("div", "diff-controls"),
+          pages = Math.ceil(lines.length / pageSize);
+        const prev = button("action", "上一段", () => {
+          page--;
+          render();
+        });
+        const next = button("action", "下一段", () => {
+          page++;
+          render();
+        });
+        prev.disabled = page === 0;
+        next.disabled = page + 1 === pages;
+        controls.append(
+          prev,
+          el("span", "muted", page + 1 + " / " + pages),
+          next,
+        );
+        wrapper.append(controls);
+      }
+      host.append(wrapper);
+      const first = body.querySelector(".focus");
+      if (first)
+        scroll.scrollTop = Math.max(0, first.offsetTop - table.offsetTop - 70);
+    }
+    render();
+  }
+  function proofPanel(parent, points) {
+    const panel = section(parent, "源码差异依据");
+    if (!points.length) {
+      panel.append(el("p", "empty", "本次差异中没有与此项关联的位置。"));
+      return;
+    }
+    let selected = 0,
+      shown = 12;
+    const list = el("div"),
+      graphLink = el("div"),
+      preview = el("div");
+    panel.append(list, graphLink, preview);
+    function render() {
+      const point = points[selected];
+      list.replaceChildren();
+      graphLink.replaceChildren();
+      for (const [i, p] of points.slice(0, shown).entries()) {
+        const label = (p.symbol ? p.symbol + "  ·  " : "") + location(p);
+        const b = button("source-item", label, () => {
+          selected = i;
+          render();
+        });
+        b.setAttribute("aria-pressed", String(selected === i));
+        list.append(b);
+      }
+      if (points.length > shown)
+        list.append(
+          button("more", "显示更多依据", () => {
+            shown += 20;
+            render();
+          }),
+        );
+      if (
+        report.graphUrl === "/" &&
+        point.side !== "before" &&
+        point.file?.endsWith(".py") &&
+        point.line > 0
+      ) {
+        const a = el("a", "link-row", "在架构图中查看");
+        const hash = new URLSearchParams({
+          file: point.file,
+          line: String(point.line),
+        });
+        if (point.symbol) hash.set("symbol", point.symbol);
+        a.href = "/#" + hash;
+        graphLink.append(a);
+      }
+      preview.replaceChildren();
+      drawDiff(preview, byFile.get(point.file), point);
+    }
+    render();
+  }
+  function reviewForm(parent, row) {
+    const area = section(parent, "人工复核");
+    const form = el("form", "review-form"),
+      choices = el("select");
+    choices.setAttribute("aria-label", "人工判定");
+    choices.add(new Option("尚未判定", ""));
+    for (const [value, label] of Object.entries(decisionLabels[mode]))
+      choices.add(new Option(label, value));
+    const key = decisionId(row),
+      prev = judgments[key];
+    choices.value = prev?.choice || "";
+    const memo = el("textarea");
+    memo.setAttribute("aria-label", "复核依据");
+    memo.placeholder = "记录判定依据或需要 agent 补充的证据";
+    memo.value = prev?.note || "";
+    const save = el("button", "action", "保存复核");
+    save.type = "submit";
+    form.append(choices, memo, save);
+    area.append(form);
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      const note = memo.value.trim();
+      if (choices.value || note)
+        judgments[key] = {
+          category: mode,
+          id: keyOf(row),
+          choice: choices.value,
+          decision: decisionLabels[mode][choices.value] || "尚未判定",
+          note,
+        };
+      else delete judgments[key];
+      try {
+        localStorage.setItem(decisionKey, JSON.stringify(judgments));
+        notice("复核记录已保存");
+      } catch {
+        notice("本页已记录，可导出复核记录保留");
+      }
+      renderList();
+      renderDetail();
+    };
+  }
+  function renderDetail() {
+    const root = $("detail");
+    root.replaceChildren();
+    const row = active;
+    if (!row) {
+      const empty = rows[mode].length
+        ? "没有符合筛选条件的项目。"
+        : {
+            requirements: "没有列入报告的验收要求。",
+            defenses: "扫描规则没有标出新增防御模式。",
+            scope: "本次比较没有范围变更项。",
+            changes: "版本间没有文件差异。",
+          }[mode];
+      root.append(el("p", "empty", empty));
+      return;
+    }
+    const head = el("div", "pane-head");
+    head.append(tag(row.status));
+    if (mode === "requirements") head.append(el("code", "muted", row.id));
+    root.append(head, el("h2", "detail-title", textOf(row)));
+    if (row.detail) root.append(el("p", "copy", row.detail));
+    if (mode === "changes") {
+      if (row.beforeHash || row.afterHash) {
+        const meta = el("details", "check"),
+          dl = el("dl");
+        meta.append(el("summary", "", "内容指纹与文件模式"));
+        field(dl, "基线 SHA-256", row.beforeHash);
+        field(dl, "交付 SHA-256", row.afterHash);
+        field(dl, "基线文件模式", row.beforeMode);
+        field(dl, "交付文件模式", row.afterMode);
+        meta.append(dl);
+        root.append(meta);
+      }
+      const box = section(root, "文件差异");
+      drawDiff(box, row);
+      return;
+    }
+    if (mode === "requirements") {
+      if (row.scope?.length)
+        root.append(el("p", "muted", "约定范围　" + row.scope.join("、")));
+      if (row.writes?.length)
+        root.append(el("p", "muted", "约定写入路径　" + row.writes.join("、")));
+      const checks = section(root, "行为检查");
+      if (!row.checks?.length)
+        checks.append(
+          el("p", "empty", "此项没有可执行的验收检查，需要补充验证。"),
+        );
+      else {
+        checks.append(el("p", "muted", "状态依据清单中的检查和期望输出计算。"));
+        row.checks.forEach((check) => checks.append(checkRecord(check)));
+      }
+      proofPanel(root, row.evidence || []);
+    } else {
+      if (mode === "defenses") {
+        const rationale = section(root, "影响与待核问题");
+        if (row.cost) rationale.append(el("p", "copy", row.cost));
+        if (row.question) rationale.append(el("p", "copy", row.question));
+        if (row.rule)
+          rationale.append(el("p", "muted", "匹配模式　" + row.rule));
+      }
+      const reqSection = section(root, "关联要求");
+      if (row.kind === "file-write")
+        reqSection.append(el("p", "copy", "位置命中以下要求。写入目标　" +
+          (row.target === null ? "运行时决定，见源码表达式" : row.target)));
+      if (row.requirementIds?.length) {
+        for (const id of row.requirementIds) {
+          const req = reqs.get(id);
+          if (req)
+            reqSection.append(
+              button("link-row", id + " · " + req.text, () =>
+                switchMode("requirements", req),
+              ),
+            );
+        }
+      } else reqSection.append(el("p", "empty", "未关联到清单中的要求。"));
+      if (row.matchedSelectors?.length) {
+        const basis = row.mapping === "symbol" ? "符号规则" : "文件规则";
+        reqSection.append(
+          el("p", "muted", basis + "　" + row.matchedSelectors.join("、")),
+        );
+      }
+      if (row.forbiddenSelectors?.length)
+        reqSection.append(
+          el(
+            "p",
+            "muted",
+            "命中禁止范围　" + row.forbiddenSelectors.join("、"),
+          ),
+        );
+      const allRanges = [];
+      for (const [field, side] of [
+        ["afterRanges", "after"],
+        ["beforeRanges", "before"],
+      ]) {
+        for (const range of row[field] || [])
+          allRanges.push({ ...row, ...range, side });
+      }
+      proofPanel(root, allRanges.length ? allRanges : [row]);
+    }
+    reviewForm(root, row);
+  }
+  $("task").textContent = report.task;
+  $("base").textContent = report.base;
+  $("target").textContent = report.target;
+  $("search").oninput = (event) => {
+    query = event.target.value.trim().toLowerCase();
+    limit = pageSize;
+    renderList();
+    renderDetail();
+  };
+  $("filter").onchange = (event) => {
+    filter = event.target.value;
+    limit = pageSize;
+    renderList();
+    renderDetail();
+  };
+  for (const [rules, label] of [
+    [report.forbidden, "禁止改动"],
+    [report.forbiddenDefenses, "禁止防御模式"],
+  ]) {
+    for (const rule of rules || []) {
+      $("policies").hidden = false;
+      $("policy-list").append(el("li", "", label + "　" + rule));
+    }
+  }
+  if (report.diagnostics?.length) {
+    $("diagnostics").hidden = false;
+    $("diagnostics").querySelector("summary").textContent =
+      "分析记录（" + report.diagnostics.length + "）";
+    for (const entry of report.diagnostics)
+      $("diagnostic-list").append(el("li", "", showValue(entry)));
+  }
+  $("export-decisions").onclick = () => {
+    const record = {
+      task: report.task,
+      base: report.base,
+      target: report.target,
+      fingerprint: report.fingerprint,
+      decisions: Object.values(judgments),
+    };
+    const blob = new Blob([JSON.stringify(record, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob),
+      anchor = el("a");
+    anchor.href = url;
+    anchor.download =
+      "how2trust-review-" + String(report.fingerprint).slice(0, 12) + ".json";
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  switchMode("requirements");
+})();
+</script>
+</body>
+</html>

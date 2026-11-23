@@ -1,0 +1,38 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.how2trust/
+
+# Local credentials, model settings and discussion databases.
+.env
+.env.*
+!.env.example
+/providers.json
+/workbench-models.json
+*.sqlite
+*.sqlite3
+*.db
+
+# Standalone exports contain the indexed source. Publish the documented samples.
+/examples/*.html
+!/examples/delivery-review.html
+!/examples/fulfillment-architecture.html
+!/examples/order-map.html
+
+# The documentation and regression tests use these fixtures from development runs.
+/audit/*
+!/audit/terra-fulfillment/
+/audit/terra-fulfillment/*
+!/audit/terra-fulfillment/project/
+!/audit/fulfillment-deepseek-improved/
+/audit/fulfillment-deepseek-improved/*
+!/audit/fulfillment-deepseek-improved/architecture.html
+!/audit/business-workbench/
+/audit/business-workbench/*
+!/audit/business-workbench/contract.json
+!/audit/business-workbench/ship-probe.py
+!/audit/business-workbench/verify-shipping.py
+!/audit/business-workbench/发货需求.txt

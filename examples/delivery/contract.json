@@ -1,0 +1,22 @@
+{
+  "task": "为订单增加取消操作。待发货订单可以取消，已发货订单应拒绝取消并保留原状态。重复取消须保持幂等。本次不增加订单导出功能。",
+  "requirements": [
+    {
+      "id": "R1", "text": "待发货订单可以取消",
+      "scope": ["orders.py::cancel_order"],
+      "checks": [{"name": "取消一笔待发货订单", "argv": ["{python}", "{spec_dir}/probe.py", "pending"],
+                  "expect": {"exit": 0, "stdout": "accepted cancelled"}}]
+    },
+    {
+      "id": "R2", "text": "已发货订单应拒绝取消并保留原状态",
+      "scope": ["orders.py::cancel_order"],
+      "checks": [{"name": "尝试取消一笔已发货订单", "argv": ["{python}", "{spec_dir}/probe.py", "shipped"],
+                  "expect": {"exit": 0, "stdout": "rejected shipped"}}]
+    },
+    {
+      "id": "R3", "text": "重复取消须保持幂等",
+      "scope": ["orders.py::cancel_order"]
+    }
+  ],
+  "forbidden": ["orders.py::export_ledger"]
+}

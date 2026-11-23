@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>How2Trust · 仓库架构工作台</title>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#" id="home"><i class="brandmark" data-icon="branch"></i>How2Trust</a>
+    <span class="head-divider"></span><span class="app-label">架构工作台</span>
+    <span class="top-spacer"></span><button id="model-settings" type="button" class="export-link" aria-haspopup="dialog">模型设置</button><a id="review-link" class="export-link" href="/review" hidden>交付验收</a><a id="export" class="export-link" href="/export.html" download="how2trust.html" hidden><i data-icon="download"></i>导出 HTML</a><span class="connection" id="connection">正在加载</span>
+    <span class="snapshot" id="snapshot"></span>
+  </header>
+  <main class="workspace">
+    <aside class="navpanel">
+      <div class="project-summary"><i data-icon="repo"></i><div><small>当前仓库</small><strong id="repo-name">…</strong></div></div>
+      <div class="nav-head"><h2 id="nav-title">整仓结构</h2><button class="icon-btn" id="collapse" title="折叠目录" aria-label="折叠目录"><i data-icon="collapse"></i></button></div>
+      <label class="search"><i data-icon="search"></i><input id="search" type="search" placeholder="查找模块、入口或代码符号" aria-label="查找模块、入口或代码符号"></label>
+      <nav id="tree" aria-label="产品层级"></nav>
+      <button id="diagnostics" class="diagnostic-button"><i data-icon="scan"></i>分析记录<span id="diag-count">0</span></button>
+    </aside>
+    <section class="mainpanel">
+      <div id="crumbs" class="crumbs"></div>
+      <div class="main-title"><div><h1 id="scope-name">仓库架构</h1><p id="metrics"></p></div><button id="up" class="light-btn"><i data-icon="up"></i><span id="up-label">上一级</span></button></div>
+      <div class="tabs" id="views" aria-label="图类型">
+        <button data-view="structure"><i data-icon="repo"></i>整仓结构</button>
+        <button data-view="product"><i data-icon="branch"></i>生产业务</button>
+        <button data-view="collaboration"><i data-icon="route"></i>模块协作</button>
+        <button data-view="class"><i data-icon="class"></i>类关系图</button>
+        <button data-view="call"><i data-icon="route"></i>方法调用链</button>
+      </div>
+      <section id="generation-feedback" aria-label="生产业务图生成进度" hidden>
+        <div class="generation-heading"><strong id="generation-stage" role="status"></strong><span id="generation-count"></span></div>
+        <progress id="generation-progress" aria-label="生成生产业务图"></progress>
+        <ul id="generation-batches"></ul>
+        <p id="generation-connection" hidden>暂时无法取得最新进度，正在重新连接…</p>
+        <p id="generation-error" role="alert" hidden></p>
+        <div id="generation-actions" hidden><button type="button" class="light-btn" id="generation-retry">重试生成</button><button type="button" class="text-btn" id="generation-settings">调整模型设置</button></div>
+      </section>
+      <section id="shared-calls" aria-label="多个入口共用的实现" hidden>
+        <h2>多个入口共用的实现</h2>
+        <div id="shared-list"></div>
+      </section>
+      <section class="diagram">
+        <div id="module-controls" hidden>
+          <label>模块 <select id="module-focus" class="light-btn"></select></label>
+          <label>范围 <select id="module-direction" class="light-btn"><option value="out">它调用谁</option><option value="in">谁调用它</option><option value="all">全部模块</option></select></label>
+          <div id="module-pages" hidden><button id="module-prev" class="light-btn" aria-label="上一页关系">‹</button><span id="module-page"></span><button id="module-next" class="light-btn" aria-label="下一页关系">›</button></div>
+        </div>
+        <div class="diagram-head"><strong><span class="live-dot"></span><span id="canvas-name">产品结构图</span></strong>
+          <select id="root-layer" aria-label="首页图层" class="light-btn" hidden></select>
+          <span id="canvas-count"></span><button id="call-range" class="light-btn" hidden></button>
+          <button type="button" id="fullscreen-inspector" class="light-btn" aria-controls="graph-inspector" aria-expanded="false" hidden><i data-icon="panel"></i>检查器</button>
+          <button type="button" id="fullscreen" class="light-btn" aria-controls="canvas" aria-pressed="false"><i data-icon="expand"></i><span>全屏查看</span></button>
+        </div>
+        <div class="canvas" id="canvas">
+          <svg id="drawing" aria-label="可交互架构图" role="group"></svg>
+          <div id="empty-graph" hidden></div>
+          <div class="canvas-tools">
+            <button id="pan" title="拖动画布" aria-label="拖动画布"><i data-icon="hand"></i></button>
+            <button id="select" title="拖出矩形圈选节点" aria-label="拖出矩形圈选节点"><i data-icon="select"></i></button>
+            <b></b>
+            <button id="minus" title="缩小" aria-label="缩小"><i data-icon="minus"></i></button><span id="zoom-label"></span>
+            <button id="plus" title="放大" aria-label="放大"><i data-icon="plus"></i></button>
+            <button id="fit" title="适应画布" aria-label="适应画布"><i data-icon="fit"></i></button>
+          </div>
+        </div>
+        <div class="canvas-foot"><span><i data-icon="pointer"></i><span id="canvas-hint">点击模块展开</span></span><span id="selection-count"></span></div>
+      </section>
+    </section>
+    <aside class="inspector" id="graph-inspector">
+      <div id="inspector-resizer" role="separator" tabindex="0" aria-orientation="vertical"
+           aria-label="调整检查器宽度" aria-controls="graph-inspector"
+           title="左右拖动或按方向键调整宽度，双击或按回车恢复默认宽度"></div>
+      <div class="inspector-header"><i data-icon="panel"></i><h2>检查器</h2><button id="generate-semantics" type="button" class="light-btn" hidden>生成业务解读</button></div>
+      <div class="inspect-tabs" id="inspect-tabs"><button data-inspect="evidence">源码</button><button data-inspect="notes">批注</button><button data-inspect="chat">问答</button></div>
+      <div class="inspect-content" id="inspect-content"></div>
+    </aside>
+  </main>
+  <dialog id="diag-dialog"><div class="dialog-title"><h2>分析记录</h2><button class="icon-btn" id="diag-close" aria-label="关闭"><i data-icon="close"></i></button></div><div id="diag-list"></div></dialog>
+  <dialog id="model-dialog" aria-labelledby="model-title">
+    <div class="dialog-title"><h2 id="model-title">模型设置</h2><button class="icon-btn" id="model-close" aria-label="关闭模型设置"><i data-icon="close"></i></button></div>
+    <p id="model-offline" hidden>这是离线快照。将源码目录拖到 How2Trust.cmd，在打开的本地工作台右上角点「模型设置」，即可配置模型并提问。</p>
+    <p id="model-status" role="status" aria-live="polite"></p>
+    <form id="model-form" hidden>
+      <label>应用范围<select id="model-stage"><option value="both">业务解读和图上问答</option><option value="semantics">仅业务解读</option><option value="chat">仅图上问答</option></select></label>
+      <div class="model-row"><label>供应商名称<input id="model-provider" list="provider-choices" placeholder="选择或输入名称"></label>
+        <datalist id="provider-choices"><option value="DeepSeek"></option><option value="Ollama"></option><option value="Anthropic"></option></datalist>
+        <label>接口协议<select id="model-protocol"><option value="openai">Chat Completions 兼容</option><option value="anthropic">Anthropic Messages</option></select></label></div>
+      <label>API 基础地址<input id="model-url" type="url" required placeholder="https://api.deepseek.com"></label>
+      <label>模型名<input id="model-name" required placeholder="供应商 API 使用的模型名"></label>
+      <label>鉴权方式<select id="model-auth"><option value="env">使用本机环境变量</option><option value="session">粘贴 API Key（本次服务有效）</option><option value="none">无需密钥</option></select></label>
+      <label id="model-env-field">密钥环境变量名<input id="model-env" placeholder="DEEPSEEK_API_KEY" spellcheck="false"></label>
+      <label id="model-secret-field" hidden>API Key<input id="model-secret" type="password" autocomplete="off" spellcheck="false"></label>
+      <p class="model-help">保存后即时生效，下次直接打开工作台会沿用设置。粘贴的密钥在关闭本地服务后清除。</p>
+      <div class="model-actions"><button class="form-btn" id="model-cancel" type="button">取消</button><button class="form-btn primary" id="model-save" type="submit">保存并应用</button></div>
+    </form>
+  </dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

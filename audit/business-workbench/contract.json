@@ -1,0 +1,42 @@
+{
+  "task": "按仓发货。两仓各预留一件后，第一次发货应显示部分发货，重复发同一仓须拒绝且不影响订单和库存，最后一仓发完才算全部发货。",
+  "requirements": [
+    {
+      "id": "SHIP",
+      "text": "跨仓订单的发货状态、重复发货和剩余预留正确",
+      "scope": ["dispatchdesk/store.py::Desk.ship"],
+      "scenarios": [
+        {
+          "name": "两仓逐次发货并重复尝试第一仓",
+          "given": "N、W 两仓各有一件 A，订单 O1 订购两件，均已预留。",
+          "when": "发 N 仓并重新查询，再次发 N 仓并核对订单和库存，最后发 W 仓。",
+          "then": "首仓发出后状态为 partial、W 未发货。重复发货被拒且不改变订单和库存。最后状态为 shipped，两仓均已发货。"
+        }
+      ],
+      "checks": [
+        {
+          "name": "两仓逐次发货并重复尝试第一仓",
+          "argv": ["{python}", "{spec_dir}/ship-probe.py"],
+          "source": "dispatchdesk/store.py::Desk.ship",
+          "trace": true,
+          "expect": {
+            "exit": 0,
+            "json": {
+              "/initial/state": "reserved",
+              "/initial/allocations": [["N", "A", 1, 0], ["W", "A", 1, 0]],
+              "/first/exit": 0,
+              "/first/state": "partial",
+              "/first/allocations": [["N", "A", 1, 1], ["W", "A", 1, 0]],
+              "/duplicate/rejected": true,
+              "/duplicate/orderUnchanged": true,
+              "/duplicate/inventoryUnchanged": true,
+              "/last/exit": 0,
+              "/last/state": "shipped",
+              "/last/allocations": [["N", "A", 1, 1], ["W", "A", 1, 1]]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

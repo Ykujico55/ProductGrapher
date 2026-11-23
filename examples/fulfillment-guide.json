@@ -1,0 +1,866 @@
+{
+  "schema": "how2trust.semantics.v1",
+  "snapshot": "e41dcd63422532e16fb6dce861ba62b1dc0a22f8e8d09b58bb8b0316a36dc666",
+  "model": "Codex",
+  "provider": "Codex 会话",
+  "promptVersion": "3",
+  "generationFingerprint": "0cec8ed9941e409e7aa8e18c058f549cb87f7b81de6b99c358604693b4383485",
+  "requirementsFingerprint": "12ae32cb1ec02d01eda3581b127c1fee3b0dc53572ed6baf239721a03d82e126",
+  "overview": {
+    "text": "dispatchdesk 把补货、接单、发货、退货和查询做成七个命令。命令入口将操作交给 Desk，由同一份 SQLite 数据库记录各仓库存、订单、商品明细和分仓预留。接单时先尝试凑齐全部商品，满足后才整单预留。已预留（reserved）或部分发货（partial）的订单可以按仓出库；只有等待库存（waiting）和已预留（reserved）的订单可以取消。",
+    "refs": [
+      {
+        "file": "dispatchdesk/__main__.py",
+        "line": 57,
+        "end": 76
+      },
+      {
+        "file": "dispatchdesk/store.py",
+        "line": 9,
+        "end": 36
+      },
+      {
+        "file": "dispatchdesk/store.py",
+        "line": 65,
+        "end": 85
+      },
+      {
+        "file": "dispatchdesk/store.py",
+        "line": 104,
+        "end": 117
+      },
+      {
+        "file": "dispatchdesk/store.py",
+        "line": 119,
+        "end": 139
+      },
+      {
+        "file": "dispatchdesk/store.py",
+        "line": 143,
+        "end": 157
+      }
+    ]
+  },
+  "items": [
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:21:stock",
+      "capability": "接单与库存预留",
+      "title": "仓库补货",
+      "aliases": [
+        "补货",
+        "库存入库",
+        "补货后重试"
+      ],
+      "text": "给指定仓库的某个 SKU 增加可用数量，随后按接单顺序重新尝试为等待订单分配库存。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 21,
+          "end": 24
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 59,
+          "end": 60
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 93,
+          "end": 101
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 87,
+          "end": 91
+        }
+      ]
+    },
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:25:order",
+      "capability": "接单与库存预留",
+      "title": "接单并预留库存",
+      "aliases": [
+        "接单",
+        "创建订单",
+        "跨仓配货",
+        "缺货等待"
+      ],
+      "text": "按订单号、地区和商品数量建单，重复 SKU 的数量会合并。新订单先记为等待库存（waiting），立即尝试分配；所有明细都够时才转为已预留（reserved），已有订单号会被拒绝。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 25,
+          "end": 29
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 47,
+          "end": 56
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 61,
+          "end": 62
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 104,
+          "end": 117
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 65,
+          "end": 85
+        }
+      ]
+    },
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:33:cancel",
+      "capability": "接单与库存预留",
+      "title": "取消未发货订单",
+      "aliases": [
+        "取消订单",
+        "撤单",
+        "取消预留",
+        "部分发货后取消"
+      ],
+      "text": "只有等待库存（waiting）或已预留（reserved）的订单可以取消。已预留的商品按原仓和 SKU 补回可用库存，分配记录被删除，再重试等待订单；即使只发出了一个仓，也不能取消。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 33,
+          "end": 34
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 65,
+          "end": 66
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 143,
+          "end": 157
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 87,
+          "end": 91
+        }
+      ]
+    },
+    {
+      "nodeId": "method:dispatchdesk/store.py:Desk.allocate",
+      "capability": "接单与库存预留",
+      "title": "整单跨仓分配",
+      "aliases": [
+        "跨仓预留",
+        "库存分配",
+        "拆仓",
+        "near",
+        "bulk"
+      ],
+      "text": "逐 SKU 选择有可用库存的仓库。near 优先订单地区的同名仓，其余按仓库名；bulk 优先可用量最多的仓，同量按仓库名。分配计划可拆到多个仓，任一 SKU 不足就退出；全部满足才扣减可用库存并写入各仓预留。",
+      "refs": [
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 49,
+          "end": 64
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 65,
+          "end": 85
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 104,
+          "end": 117
+        }
+      ]
+    },
+    {
+      "nodeId": "method:dispatchdesk/store.py:Desk.retry",
+      "capability": "接单与库存预留",
+      "title": "重试等待订单",
+      "aliases": [
+        "缺货订单重试",
+        "等待队列",
+        "补货后分配"
+      ],
+      "text": "只选取等待库存（waiting）的订单，按建单序号逐单尝试整单分配。某单缺货时分配方法返回，循环继续尝试后续订单。补货、取消成功或可再售退货都可触发这一流程。",
+      "refs": [
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 73,
+          "end": 75
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 87,
+          "end": 91
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 93,
+          "end": 101
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 155,
+          "end": 157
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 180,
+          "end": 187
+        }
+      ]
+    },
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:30:ship",
+      "capability": "出库与退货",
+      "title": "按仓发货",
+      "aliases": [
+        "发货",
+        "按仓出库",
+        "部分发货",
+        "最后一仓",
+        "全部发货"
+      ],
+      "text": "指定订单和出库仓，一次标记该仓为该单预留的全部商品已发。仅已预留（reserved）或部分发货（partial）的订单可操作；该仓无预留或已经发过会被拒绝。还有未发分配时订单为部分发货（partial），最后一仓发完才是全部发货（shipped）。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 30,
+          "end": 32
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 63,
+          "end": 64
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 119,
+          "end": 133
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 134,
+          "end": 141
+        }
+      ]
+    },
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:35:return",
+      "capability": "出库与退货",
+      "title": "登记退货入库",
+      "aliases": [
+        "退货",
+        "退货入库",
+        "可再售退货",
+        "损坏品",
+        "退回商品"
+      ],
+      "text": "按订单、实际出库仓和 SKU 核对已发数量，累计退货不得超出该批发出的数量。可再售品（sellable）补回该仓可用库存并重试等待订单；损坏品（damaged）单独计数。退货数量记在分仓记录上，订单发货状态保持原值。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 35,
+          "end": 40
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 67,
+          "end": 70
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 160,
+          "end": 179
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 180,
+          "end": 187
+        }
+      ]
+    },
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:41:status",
+      "capability": "订单与库存查询",
+      "title": "查询订单履约进度",
+      "aliases": [
+        "订单状态",
+        "订单进度",
+        "分仓明细"
+      ],
+      "text": "按订单号返回地区、分配策略、当前状态和商品明细。分仓明细显示每个仓和 SKU 的分配数量、发货标记，以及可再售和损坏两类累计退货数量。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 41,
+          "end": 42
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 71,
+          "end": 72
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 189,
+          "end": 201
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 202,
+          "end": 211
+        }
+      ]
+    },
+    {
+      "nodeId": "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:43:report",
+      "capability": "订单与库存查询",
+      "title": "查询分仓库存",
+      "aliases": [
+        "库存报表",
+        "库存查询",
+        "可用库存",
+        "未发预留"
+      ],
+      "text": "按仓库和 SKU 列出可用量、预留量和损坏量。预留量取仍未发货的分仓记录数量之和，没有相应分配时显示零。",
+      "refs": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 43,
+          "end": 44
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 71,
+          "end": 74
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 213,
+          "end": 222
+        }
+      ]
+    }
+  ],
+  "coverage": {
+    "eligible": 34,
+    "explained": 9
+  },
+  "groups": [
+    {
+      "id": "tree:0fbb17ba0bdd2066ac646c4c",
+      "kind": "capability",
+      "label": "出库与退货",
+      "children": [
+        {
+          "id": "tree:115c1d673a29f0a980153dca",
+          "kind": "entry",
+          "label": "ship",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:30:ship"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 30,
+              "end": 30
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 30,
+              "end": 32
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 63,
+              "end": 64
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 119,
+              "end": 133
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 134,
+              "end": 141
+            }
+          ]
+        },
+        {
+          "id": "tree:710b9d3de4b711e92aa6ab8d",
+          "kind": "entry",
+          "label": "return",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:35:return"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 35,
+              "end": 35
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 35,
+              "end": 40
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 67,
+              "end": 70
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 160,
+              "end": 179
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 180,
+              "end": 187
+            }
+          ]
+        }
+      ],
+      "nodeIds": [],
+      "evidence": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 30,
+          "end": 32
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 63,
+          "end": 64
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 119,
+          "end": 133
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 134,
+          "end": 141
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 35,
+          "end": 40
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 67,
+          "end": 70
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 160,
+          "end": 179
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 180,
+          "end": 187
+        }
+      ],
+      "basis": "模型根据这些入口和代码符号的实际职责归组。"
+    },
+    {
+      "id": "tree:bd9b25c3a1a0ddbb3c41a77d",
+      "kind": "capability",
+      "label": "接单与库存预留",
+      "children": [
+        {
+          "id": "tree:37b722f62aceb904ac67c6e9",
+          "kind": "entry",
+          "label": "stock",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:21:stock"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 21,
+              "end": 21
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 21,
+              "end": 24
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 59,
+              "end": 60
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 93,
+              "end": 101
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 87,
+              "end": 91
+            }
+          ]
+        },
+        {
+          "id": "tree:576a30ef382282be678b0910",
+          "kind": "entry",
+          "label": "order",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:25:order"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 25,
+              "end": 25
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 25,
+              "end": 29
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 47,
+              "end": 56
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 61,
+              "end": 62
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 104,
+              "end": 117
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 65,
+              "end": 85
+            }
+          ]
+        },
+        {
+          "id": "tree:dfdbf337eb9d962f5c1e1807",
+          "kind": "entry",
+          "label": "cancel",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:33:cancel"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 33,
+              "end": 33
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 33,
+              "end": 34
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 65,
+              "end": 66
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 143,
+              "end": 157
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 87,
+              "end": 91
+            }
+          ]
+        },
+        {
+          "id": "tree:bd5b8b7914b5f8eeb0805432",
+          "kind": "method",
+          "label": "allocate",
+          "children": [],
+          "nodeIds": [
+            "method:dispatchdesk/store.py:Desk.allocate"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 49,
+              "end": 85
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 49,
+              "end": 64
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 65,
+              "end": 85
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 104,
+              "end": 117
+            }
+          ]
+        },
+        {
+          "id": "tree:2525fee9705028051dab6e73",
+          "kind": "method",
+          "label": "retry",
+          "children": [],
+          "nodeIds": [
+            "method:dispatchdesk/store.py:Desk.retry"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 87,
+              "end": 91
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 73,
+              "end": 75
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 93,
+              "end": 101
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 155,
+              "end": 157
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 180,
+              "end": 187
+            }
+          ]
+        }
+      ],
+      "nodeIds": [],
+      "evidence": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 21,
+          "end": 24
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 59,
+          "end": 60
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 93,
+          "end": 101
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 87,
+          "end": 91
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 25,
+          "end": 29
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 47,
+          "end": 56
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 61,
+          "end": 62
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 104,
+          "end": 117
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 65,
+          "end": 85
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 33,
+          "end": 34
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 65,
+          "end": 66
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 143,
+          "end": 157
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 49,
+          "end": 64
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 73,
+          "end": 75
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 155,
+          "end": 157
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 180,
+          "end": 187
+        }
+      ],
+      "basis": "模型根据这些入口和代码符号的实际职责归组。"
+    },
+    {
+      "id": "tree:1346f5685578db9732bee1ca",
+      "kind": "capability",
+      "label": "订单与库存查询",
+      "children": [
+        {
+          "id": "tree:81ef7dada2f48b7c640ebf06",
+          "kind": "entry",
+          "label": "status",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:41:status"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 41,
+              "end": 41
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 41,
+              "end": 42
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 71,
+              "end": 72
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 189,
+              "end": 201
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 202,
+              "end": 211
+            }
+          ]
+        },
+        {
+          "id": "tree:0ce5f086f1a98cdb99e1bf52",
+          "kind": "entry",
+          "label": "report",
+          "children": [],
+          "nodeIds": [
+            "entry:dispatchdesk/__main__.py:function:dispatchdesk/__main__.py:main:43:report"
+          ],
+          "evidence": [
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 43,
+              "end": 43
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 43,
+              "end": 44
+            },
+            {
+              "file": "dispatchdesk/__main__.py",
+              "line": 71,
+              "end": 74
+            },
+            {
+              "file": "dispatchdesk/store.py",
+              "line": 213,
+              "end": 222
+            }
+          ]
+        }
+      ],
+      "nodeIds": [],
+      "evidence": [
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 41,
+          "end": 42
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 71,
+          "end": 72
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 189,
+          "end": 201
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 202,
+          "end": 211
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 43,
+          "end": 44
+        },
+        {
+          "file": "dispatchdesk/__main__.py",
+          "line": 71,
+          "end": 74
+        },
+        {
+          "file": "dispatchdesk/store.py",
+          "line": 213,
+          "end": 222
+        }
+      ],
+      "basis": "模型根据这些入口和代码符号的实际职责归组。"
+    }
+  ],
+  "fingerprint": "8a934a569435c087dae317b116c8d042475c207c850c2c35e346f1ef8a162474"
+}
