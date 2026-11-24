@@ -13,8 +13,10 @@ dependencies = []
 [project.scripts]
 how2trust = "how2trust.__main__:main"
 
-[tool.setuptools]
-packages = ["how2trust"]
+[tool.setuptools.packages.find]
+include = ["how2trust", "how2trust.*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 how2trust = ["assets/*.html", "assets/*.css", "assets/*.js", "assets/vendor/*.js", "assets/vendor/*.md"]
+"how2trust._vendor" = ["runtime.zip", "pycg.zip", "README.md", "LICENSE-*.txt"]

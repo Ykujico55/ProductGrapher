@@ -241,7 +241,10 @@ def compare_claim_evidence(previous_graph, current_graph, guide=None):
     if not isinstance(previous_graph, dict) or previous_graph.get("schema") != 1 or not all(
             field in previous_graph for field in SNAPSHOT_FIELDS):
         raise ValueError("旧图缺少完整的源码快照，请选择工作台导出的架构 HTML 或图 JSON。")
-    if previous_graph.get("snapshot") != digest({k: previous_graph[k] for k in SNAPSHOT_FIELDS}):
+    signed_fields = {k: previous_graph[k] for k in SNAPSHOT_FIELDS}
+    if "callDiagnosticVersion" in previous_graph:
+        signed_fields["callDiagnosticVersion"] = previous_graph["callDiagnosticVersion"]
+    if previous_graph.get("snapshot") != digest(signed_fields):
         raise ValueError("旧图的源码和结构与快照指纹不一致，请使用原始导出。")
     guide = previous_graph.get("semantics") if guide is None else guide
     if guide is None:

@@ -159,6 +159,8 @@ def local_material(graph, targets, include_neighbors=False):
     for e in offered:
         spans.append(ref(e))
         row = {k: e[k] for k in ("id", "kind", "source", "target", "file", "line", "end")}
+        if e.get("engine") == "pycg":
+            row.update(engine=e["engine"], basis=e["basis"])
         site = sites.get(e["id"])
         if site:
             # Keep guards, early exits and argument choices without attaching

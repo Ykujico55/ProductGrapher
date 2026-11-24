@@ -44,6 +44,79 @@ async function checkRecursiveCalls(page, root, tmp) {
   assert.match(await page.locator("#inspect-content .proof[open]").first().innerText(), /self\.walk\(n - 2\)/);
 }
 
+async function checkCallEvidence(page, root, tmp) {
+  const source = path.join(tmp, "evidence");
+  const output = path.join(tmp, "evidence.html");
+  fs.mkdirSync(source);
+  fs.writeFileSync(path.join(source, "service.py"), [
+    "from math import sqrt", "from vendorlib import solve", "",
+    "def store(x): return x", "",
+    "class Service:", "    def run(self, items, callback):",
+    "        store(len(items))", "        store(sqrt(4))", "        return solve(callback(items))", "",
+  ].join("\n"));
+  execFileSync(process.env.PYTHON || "python", ["-B", "-X", "utf8", "-m", "how2trust", "export", source, "-o", output],
+    {cwd:root, windowsHide:true});
+  const panel = page.locator("#inspect-content .method-calls");
+  const dialog = page.locator("#diag-dialog");
+  async function openMethod(file) {
+    await page.goto(pathToFileURL(file).href);
+    await page.locator("#search").fill("Service.run");
+    await page.locator("#tree .symbol-result").first().click();
+  }
+  await openMethod(output);
+  assert.equal(await panel.locator(".section-head span").innerText(), "6");
+  const toggle = page.locator("#call-dependencies");
+  const drawing = page.locator("#drawing");
+  const solver = drawing.locator('[data-key="dependency:vendorlib.solve"]');
+  assert.equal(await solver.count(), 0);
+  await toggle.click();
+  assert.equal(await toggle.getAttribute("aria-pressed"), "true");
+  for (const item of [solver, drawing.getByRole("button", {name:/vendorlib\.solve.*仓外调用/})]) {
+    await item.focus();
+    await item.press("Enter");
+    await dialog.locator(".proof summary").click();
+    assert((await dialog.locator(".source-line.focus").innerText()).includes("return solve(callback(items))"));
+    await dialog.getByRole("button", {name:"关闭"}).click();
+  }
+  await toggle.click();
+  assert.equal(await solver.count(), 0);
+  await toggle.click();
+  await page.locator("#search").fill("store");
+  await page.locator("#tree .symbol-result").first().click();
+  assert.equal(await solver.count(), 0);
+  await openMethod(output);
+  for (const [label, n, line, snippet] of [["仓内",2,8,"store(len(items))"],["内置",1,8,"len(items)"],
+      ["标准库",1,9,"sqrt(4)"],["外部依赖",1,10,"solve(callback(items))"],["未解析",1,10,"callback(items)"]]) {
+    await panel.getByRole("button", {name:label+" "+n, exact:true}).click();
+    assert.equal(await dialog.locator(".diag-item").count(), n);
+    const ref = dialog.locator(".proof").filter({has:page.locator("summary", {hasText:"service.py · L"+line})}).first();
+    await ref.locator("summary").click();
+    assert((await ref.locator(".source-line.focus").innerText()).includes(snippet));
+    await dialog.getByRole("button", {name:"关闭"}).click();
+  }
+  // An older graph can carry a message without either classification or caller.
+  const legacy = path.join(tmp, "old-evidence.html");
+  const current = fs.readFileSync(output, "utf8");
+  const start = "<script>window.H2T_GRAPH=";
+  const offset = current.indexOf(start) + start.length, end = current.indexOf(";</script>", offset);
+  const graph = JSON.parse(current.slice(offset, end));
+  delete graph.callDiagnosticVersion;
+  graph.diagnostics = [
+    {file:"service.py", line:9, end:9, caller:"method:service.py:Service.run", message:"调用目标未解析 · sqrt"},
+    {file:"service.py", line:10, end:10, message:"调用目标未解析 · solve"},
+  ];
+  fs.writeFileSync(legacy, current.slice(0, offset) + JSON.stringify(graph).replaceAll("<", "\\u003c") + current.slice(end));
+  await openMethod(legacy);
+  assert.equal(await toggle.isVisible(), false);
+  assert.equal(await panel.locator(".section-head span").innerText(), "3");
+  assert.equal(await panel.getByRole("button", {name:"未分类 1"}).count(), 1);
+  assert.equal(await panel.getByText(/标准库|外部依赖/).count(), 0);
+  await page.locator("#diagnostics").click();
+  assert.equal(await dialog.locator("h2").innerText(), "分析记录");
+  assert.equal(await dialog.getByText("调用目标未解析 · solve", {exact:true}).count(), 1);
+  await dialog.getByRole("button", {name:"关闭"}).click();
+}
+
 async function main() {
   const root = path.resolve(__dirname, "..");
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "how2trust-navigation-"));
@@ -108,9 +181,10 @@ async function main() {
     assert(linkedBox.x >= viewport.x && linkedBox.x + linkedBox.width <= viewport.x + viewport.width);
     assert(linkedBox.y >= viewport.y && linkedBox.y + linkedBox.height <= viewport.y + viewport.height);
     await checkRecursiveCalls(page, root, tmp);
+    await checkCallEvidence(page, root, tmp);
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ initialNodes: local, fullNodes: full, fullEdges: allEdges, initialZoom: zoom,
-      classMethodAndFunctionEvidence: true, reviewLink: true, recursiveCallChain: true, pageErrors: errors }));
+      classMethodAndFunctionEvidence: true, reviewLink: true, recursiveCallChain: true, directCallEvidence: true, pageErrors: errors }));
   } finally {
     if (browser) await browser.close();
     fs.rmSync(tmp, {recursive:true, force:true});

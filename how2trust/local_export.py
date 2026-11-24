@@ -23,7 +23,8 @@ def local_export_graph(graph, view):
     members = set(view["selectedNodeIds"]) | set(view["neighborNodeIds"])
     nodes = [{k: node[k] for k in ("id", "kind", "label", "qualname", "file", "line", "end")}
              for node in graph["nodes"] if node["id"] in members]
-    edges = [{k: edge[k] for k in ("id", "kind", "source", "target", "file", "line", "end", "column") if k in edge}
+    edges = [{k: edge[k] for k in ("id", "kind", "source", "target", "file", "line", "end",
+                                   "column", "endColumn", "engine", "basis") if k in edge}
              for edge in graph["edges"] if edge["source"] in members and edge["target"] in members
              and any(start <= edge["line"] <= edge["end"] <= end for start, end in ranges.get(edge["file"], ()))]
     tree = branch("project", graph["name"], ["local", view["id"]])

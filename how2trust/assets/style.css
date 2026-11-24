@@ -785,6 +785,24 @@ h2 {
   cursor: pointer;
   color: var(--green);
 }
+.call-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.call-counts button, .call-counts span {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 12px;
+}
+.call-counts button {
+  background: #eef5f0;
+  color: var(--green);
+}
+.call-counts span {
+  color: var(--muted);
+}
 .reading-anchor {
   margin-top: 7px;
 }

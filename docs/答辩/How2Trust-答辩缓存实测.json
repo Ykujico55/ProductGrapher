@@ -1,0 +1,53 @@
+{
+  "python-dotenv": {
+    "batches": 4,
+    "ownChanged": 1,
+    "requestChanged": 1,
+    "reusable": 3,
+    "draftCharsFull": 87400,
+    "draftCharsMiss": 27491,
+    "path": "src/dotenv/main.py",
+    "old": "if k in os.environ and not self.override:",
+    "new": "if not self.override and k in os.environ:",
+    "coldFixture": {
+      "calls": {
+        "explain": 4,
+        "verify": 4,
+        "overview": 1,
+        "domains": 1,
+        "review_overview": 4
+      },
+      "inputChars": 208521,
+      "completed": 4,
+      "cached": 0
+    },
+    "warmFixture": {
+      "calls": {
+        "explain": 1,
+        "verify": 1
+      },
+      "inputChars": 58569,
+      "completed": 4,
+      "cached": 3
+    }
+  },
+  "GraphRAG": {
+    "batches": 125,
+    "ownChanged": 1,
+    "requestChanged": 1,
+    "reusable": 124,
+    "draftCharsFull": 2851109,
+    "draftCharsMiss": 38665,
+    "path": "graphrag/utils/api.py",
+    "old": "key=lambda x: x.score, reverse=True",
+    "new": "key=lambda x: x.score, reverse=False",
+    "actualDraftCacheBaseHits": 125,
+    "actualDraftCacheEditedHits": 124,
+    "testOnlyDeepSeekReplay": {
+      "cached": 125,
+      "total": 125,
+      "modelCalls": 0,
+      "items": 991
+    }
+  }
+}

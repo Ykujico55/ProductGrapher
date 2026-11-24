@@ -22,6 +22,115 @@ class AnalyzerTest(unittest.TestCase):
         names = {n["id"]: n["qualname"] for n in graph["nodes"]}
         return {(names[e["source"]], names[e["target"]]) for e in graph["edges"] if e["kind"] == kind}
 
+    def call_sites(self, graph, *expressions):
+        names = {node["id"]: node["qualname"] for node in graph["nodes"]}
+        calls = sorted((edge for edge in graph["edges"] if edge["kind"] == "calls"),
+                       key=lambda edge: (edge["line"], edge["column"]))
+        return [(edge["line"], edge["expression"], names[edge["target"]]) for edge in calls
+                if not expressions or edge["expression"] in expressions]
+
+    def test_callable_alias_captures_binding_at_assignment(self):
+        graph = self.index({"app.py": """
+            def first(): pass
+            def second(): pass
+            def run():
+                fn = first
+                saved = fn
+                fn(); fn = second; fn()
+                saved()
+                fn = fn
+                fn()
+                fn, saved = saved, fn
+                fn()
+                saved()
+        """})
+        self.assertEqual(self.call_sites(graph), [
+            (6, "fn", "first"), (6, "fn", "second"), (7, "saved", "first"),
+            (9, "fn", "second"), (11, "fn", "first"), (12, "saved", "second"),
+        ])
+
+    def test_parameter_rebinding_and_unknown_rhs(self):
+        graph = self.index({"app.py": """
+            def known(): pass
+            def run(fn, pair):
+                fn()
+                fn = known
+                fn()
+                fn, spare = pair
+                fn()
+                fn = known
+                fn()
+                fn = pair[0]
+                fn()
+        """})
+        self.assertEqual(self.call_sites(graph), [(5, "fn", "known"), (9, "fn", "known")])
+        self.assertEqual({d["line"] for d in graph["diagnostics"] if "未解析" in d["message"]},
+                         {3, 7, 11})
+
+    def test_chained_nested_unpacking_and_starred_endpoints(self):
+        graph = self.index({"app.py": """
+            def first(): pass
+            def second(): pass
+            def third(): pass
+            a, (b, c) = d, [e, f] = first, (second, third)
+            a(); b(); c()
+            d(); e(); f()
+            start, *middle, end = [third, second, first]
+            start(); end()
+        """})
+        self.assertEqual(self.call_sites(graph), [
+            (5, "a", "first"), (5, "b", "second"), (5, "c", "third"),
+            (6, "d", "first"), (6, "e", "second"), (6, "f", "third"),
+            (8, "start", "third"), (8, "end", "first"),
+        ])
+
+    def test_aliases_at_conditional_loop_and_deferred_calls(self):
+        graph = self.index({"app.py": """
+            def first(): pass
+            def second(): pass
+            def conditional(flag):
+                fn = first
+                if flag: fn = second
+                fn()
+            def loop(items):
+                fn = first
+                for item in items:
+                    fn()
+                    fn = second
+                fn()
+            def enclosing():
+                fn = first
+                def invoke(): fn()
+                invoke()
+                fn = second
+                invoke()
+        """})
+        self.assertEqual(self.call_sites(graph, "fn"), [])
+        self.assertEqual({d["line"] for d in graph["diagnostics"] if "未解析" in d["message"]},
+                         {6, 10, 12, 15})
+
+    def test_calls_after_global_and_nonlocal_writes(self):
+        graph = self.index({"app.py": """
+            def first(): pass
+            def second(): pass
+            def mutate_global():
+                global cb
+                cb = second
+            cb = first
+            mutate_global()
+            cb()
+            def enclosing():
+                def mutate_nonlocal():
+                    nonlocal cb
+                    cb = second
+                cb = first
+                mutate_nonlocal()
+                cb()
+        """})
+        self.assertEqual(self.call_sites(graph, "cb"), [])
+        self.assertEqual({d["line"] for d in graph["diagnostics"] if "未解析" in d["message"]},
+                         {8, 15})
+
     def test_routes_classes_calls_and_evidence(self):
         graph = self.index({"src/shop/__init__.py": "", "src/shop/store.py": """
             class Base:

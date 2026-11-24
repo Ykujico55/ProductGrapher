@@ -60,13 +60,34 @@ def method_call(expr, name):
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == name
 
 
-@dataclass
+def unpack_assignment(target, value):
+    """Pair names with RHS expressions only when the unpacking shape is literal."""
+    if not isinstance(target, (ast.Tuple, ast.List)):
+        yield target, value
+        return
+    targets = target.elts
+    values = [None] * len(targets)
+    if isinstance(value, (ast.Tuple, ast.List)) and not any(isinstance(e, ast.Starred) for e in value.elts):
+        star = next((i for i, e in enumerate(targets) if isinstance(e, ast.Starred)), None)
+        if star is None and len(targets) == len(value.elts):
+            values = value.elts
+        elif star is not None and len(value.elts) >= len(targets) - 1:
+            suffix = len(targets) - star - 1
+            values = [*value.elts[:star], None, *value.elts[len(value.elts) - suffix:]]
+    for element, assigned in zip(targets, values):
+        if isinstance(element, ast.Starred):
+            element = element.value  # A starred capture creates a mutable list.
+        yield from unpack_assignment(element, assigned)
+
+
+@dataclass(eq=False)
 class Binding:
     kind: str
     value: object
     expr: ast.AST
     suite_end: tuple[int, int] | None = None
     available_after: tuple[int, int] | None = None
+    definition: ast.AST | None = None
 
 
 @dataclass
@@ -84,11 +105,28 @@ class Scope:
     branches: list = field(default_factory=list)
     star_imports: list = field(default_factory=list)
 
-    def binding_at(self, name, use=None):
+    def binding_at(self, name, use=None, reaching_definition=None):
         bindings = self.bindings.get(name, ())
-        if len(bindings) != 1:
+        if len(bindings) == 1:
+            binding = bindings[0]
+        elif isinstance(use, ast.Name) and reaching_definition and any(b.kind == "caught" for b in bindings):
+            # Different handlers commonly reuse 'as e'. Only the handler
+            # reaching this particular read can supply its declared type.
+            origin = reaching_definition(self.path, use)
+            binding = next((b for b in bindings if b.kind == "caught" and b.definition is origin), None)
+            if binding is None:
+                return None
+        elif (bindings and isinstance(use, ast.Name) and reaching_definition is not None
+              and all((b.kind != "unknown" or isinstance(b.expr, ast.arg))
+                      and b.suite_end is None and b.available_after is None for b in bindings)):
+            # A deferred read in another scope has no known execution point.
+            # An unknown/conditional write also prevents claiming a definite call.
+            origin = reaching_definition(self.path, use)
+            binding = next((b for b in bindings if (b.definition or b.expr) is origin), None)
+            if binding is None:
+                return None
+        else:
             return None
-        binding = bindings[0]
         start = (binding.expr.lineno, binding.expr.col_offset)
         end = (use.lineno, use.col_offset) if use is not None else None
         if binding.available_after is not None and end is not None and end < binding.available_after:
@@ -114,6 +152,8 @@ class Index:
     def __init__(self, root):
         self.root = root
         self.files = {}
+        self.encodings = {}
+        self.unresolved_calls = {}
         self.modules = defaultdict(list)
         self.scopes = {}
         self.nodes = {}
@@ -122,13 +162,15 @@ class Index:
         self.writes = []
         self.replaced = set()
         self.import_guards = []
+        self.reaching_names = {}
+        self.subclasses = None
 
     def add_edge(self, source, target, kind, path, expr, **metadata):
         self.edges.append(dict(source=source, target=target, kind=kind, **evidence(path, expr),
                                column=getattr(expr, "col_offset", 0) + 1, **metadata))
 
-    def diagnose(self, path, expr, message, caller=None):
-        diag = dict(**evidence(path, expr), message=message)
+    def diagnose(self, path, expr, message, caller=None, **details):
+        diag = dict(**evidence(path, expr), message=message, **details)
         if caller:
             diag["caller"] = caller
         self.diagnostics.append(diag)
@@ -165,6 +207,7 @@ class Index:
                     source = raw.decode(encoding)
                     self.files[path] = source
                     tree = ast.parse(source, filename=path)
+                    self.encodings[path] = encoding
                 except (SyntaxError, UnicodeError, OSError, LookupError, ValueError) as exc:
                     line = getattr(exc, "lineno", None) or 1
                     self.diagnostics.append(dict(file=path, line=line, end=line,
@@ -194,8 +237,8 @@ class Index:
         return ".".join(package[:len(package) - expr.level + 1] + ([expr.module] if expr.module else []))
 
     def collect(self, scope):
-        def bind(name, kind, value, expr, suite_end=None):
-            scope.bindings[name].append(Binding(kind, value, expr, suite_end))
+        def bind(name, kind, value, expr, suite_end=None, definition=None):
+            scope.bindings[name].append(Binding(kind, value, expr, suite_end, definition=definition))
 
         def walk(expr, unconditional, suite_end=None):
             if isinstance(expr, DEFINITIONS):
@@ -228,7 +271,9 @@ class Index:
                     if isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name):
                         bind(node.target.id, "unknown", None, node)
                     if isinstance(node, ast.Call):
-                        self.diagnose(scope.path, node, "嵌套表达式的调用目标未解析", scope.id)
+                        self.diagnose(scope.path, node, "嵌套表达式的调用目标未解析", scope.id,
+                                      category="unresolved", expression=ast.unparse(node.func),
+                                      column=node.col_offset + 1)
                     pending.extend(ast.iter_child_nodes(node))
                 return
             if isinstance(expr, (ast.Import, ast.ImportFrom)):
@@ -245,17 +290,17 @@ class Index:
                         name = alias.asname or alias.name.split(".")[0]
                         target = alias.name if alias.asname else name
                         kind = "import"
-                    bind(name, kind if unconditional else "unknown", target, expr)
+                    bind(name, kind if unconditional else "unknown", target, expr, definition=alias)
                 return
             if isinstance(expr, (ast.Assign, ast.AnnAssign)):
                 targets = expr.targets if isinstance(expr, ast.Assign) else [expr.target]
-                for t in targets:
-                    if isinstance(t, ast.Name):
-                        known = (unconditional or suite_end is not None) and expr.value is not None
-                        bind(t.id, "value" if known else "unknown", expr.value, expr, suite_end)
-                    else:
-                        if not register_field(t, expr.value, unconditional):
-                            walk(t, unconditional)
+                known = (unconditional or suite_end is not None) and expr.value is not None
+                for target in targets:
+                    for part, value in unpack_assignment(target, expr.value):
+                        if isinstance(part, ast.Name):
+                            bind(part.id, "value" if known else "unknown", value, expr, suite_end, part)
+                        elif not register_field(part, value, unconditional):
+                            walk(part, unconditional)
                 if expr.value:
                     walk(expr.value, unconditional)
                 scope.exprs.append(expr)
@@ -295,7 +340,15 @@ class Index:
                 last = expr.body[-1]
                 for stmt in expr.body:
                     walk(stmt, False, (last.end_lineno, last.end_col_offset))
-                for stmt in (*expr.handlers, *expr.orelse, *expr.finalbody):
+                for handler in expr.handlers:
+                    if handler.name and isinstance(handler.type, (ast.Name, ast.Attribute)):
+                        bind(handler.name, "caught", handler.type, handler.type,
+                             (handler.end_lineno, handler.end_col_offset), handler)
+                        for child in ast.iter_child_nodes(handler):
+                            walk(child, False)
+                    else:
+                        walk(handler, False)
+                for stmt in (*expr.orelse, *expr.finalbody):
                     walk(stmt, False)
                 return
             direct = unconditional and not isinstance(expr, ast.stmt)
@@ -336,6 +389,8 @@ class Index:
         if not ref:
             return None
         kind, value = ref
+        if kind == "caught":
+            return self.caught_member(value, name, seen)
         if kind == "path":
             return self.module_ref(value + "." + name)
         if kind not in {"node", "instance"}:
@@ -369,6 +424,33 @@ class Index:
                 if name in owner.bindings:
                     return self.bound(owner, name, None, seen)
         return None
+
+    def caught_member(self, class_id, name, seen):
+        target = self.member(("instance", class_id), name, seen)
+        if not target:
+            return None
+        # An except clause also catches subclasses. Keep a single target only
+        # if known subclasses inherit that same implementation.
+        if self.subclasses is None:
+            self.subclasses = defaultdict(list)
+            for scope in self.scopes.values():
+                if isinstance(scope.tree, ast.ClassDef):
+                    for base in scope.tree.bases:
+                        if isinstance(base, (ast.Name, ast.Attribute)):
+                            parent = self.resolve(scope.parent, base)
+                            if parent and parent[0] == "node":
+                                self.subclasses[parent[1]].append(scope.id)
+        visited = {class_id}
+        pending = list(self.subclasses.get(class_id, ()))
+        while pending:
+            child = pending.pop()
+            if child in visited:
+                continue
+            visited.add(child)
+            if self.member(("instance", child), name, seen) != target:
+                return None
+            pending.extend(self.subclasses.get(child, ()))
+        return target
 
     def class_chain(self, scope, seen):
         """Walk a statically bound single-inheritance chain; None marks an unknown remainder."""
@@ -415,19 +497,31 @@ class Index:
                 return self.resolve(method, body[0].value, seen | {(owner.id, "__new__")})
         return ("instance", ref[1])
 
+    def reaching_definition(self, path, use):
+        if path not in self.reaching_names:
+            from .name_flow import unique_name_origins
+            self.reaching_names[path] = unique_name_origins(self.scopes["module:" + path].tree)
+        return self.reaching_names[path].get(use)
+
     def bound(self, scope, name, use, seen):
-        key = (scope.id, name)
-        if key in seen:
+        binding = scope.binding_at(name, use, self.reaching_definition)
+        if binding is None or binding in seen or (scope.id, name) in seen:
             return None
-        seen = seen | {key}
-        binding = scope.binding_at(name, use)
-        if binding is None:
-            return None
+        # An alias captures its RHS at assignment time. A previous binding of
+        # the same name (for example during a swap) is a distinct definition.
+        seen = seen | {binding}
         kind, value = binding.kind, binding.value
         if kind == "node":
             return ("node", value)
         if kind == "receiver":
             return ("instance", value)
+        if kind == "caught":
+            ref = self.resolve(scope, value, seen)
+            if ref and ref[0] == "node":
+                cls = self.scopes[ref[1]]
+                if isinstance(cls.tree, ast.ClassDef) and all(
+                        self.identity_decorator(cls.parent, dec, seen) for dec in cls.tree.decorator_list):
+                    return ("caught", cls.id)
         if kind == "import":
             return self.module_ref(value)
         if kind == "from":
@@ -438,6 +532,18 @@ class Index:
             if isinstance(value, (ast.Call, ast.Name, ast.Attribute)):
                 return self.resolve(scope, value, seen)
         return None
+
+    def identity_decorator(self, scope, decorator, seen):
+        ref = self.resolve(scope, decorator, seen)
+        if not self.callable_node(ref):
+            return False
+        tree = self.scopes[ref[1]].tree
+        if not isinstance(tree, ast.FunctionDef) or tree.decorator_list:
+            return False
+        positional = tree.args.posonlyargs + tree.args.args
+        body = tree.body[1:] if ast.get_docstring(tree) is not None else tree.body
+        return (len(positional) == 1 and len(body) == 1 and isinstance(body[0], ast.Return)
+                and isinstance(body[0].value, ast.Name) and body[0].value.id == positional[0].arg)
 
     def resolve(self, scope, expr, seen=frozenset()):
         if isinstance(expr, ast.Attribute):
@@ -854,7 +960,7 @@ class Index:
         self.resolve_import_guards()
         for scope, attr in self.writes:
             ref = self.resolve(scope, attr.value)
-            if ref and ref[0] in {"instance", "node"}:
+            if ref and ref[0] in {"instance", "node", "caught"}:
                 self.replaced.add((ref[1], attr.attr))
         for scope in self.scopes.values():
             tree = scope.tree
@@ -879,6 +985,8 @@ class Index:
                                       basis=basis, expression=ast.unparse(expr.func))
                     else:
                         self.diagnose(scope.path, expr, "调用目标未解析 · " + ast.unparse(expr.func), scope.id)
+                        site = (scope.path, expr.lineno, expr.col_offset, expr.end_lineno, expr.end_col_offset)
+                        self.unresolved_calls[site] = (scope, expr, self.diagnostics[-1])
                 elif isinstance(tree, (ast.FunctionDef, ast.AsyncFunctionDef)) and isinstance(
                         scope.parent.tree, ast.ClassDef) and isinstance(expr.value, ast.Call):
                     target = self.resolve(scope, expr.value)
@@ -899,7 +1007,13 @@ def analyze(root: Path) -> dict:
     index = Index(root)
     index.load()
     index.connect()
-    return {"files": dict(sorted(index.files.items())),
+    pycg = None
+    if index.unresolved_calls:
+        from .pycg_backend import supplement_calls
+        pycg = supplement_calls(index)
+    from .call_diagnostics import classify_call_diagnostics
+    classify_call_diagnostics(index, pycg)
+    return {"callDiagnosticVersion": 1, "files": dict(sorted(index.files.items())),
             "nodes": sorted(index.nodes.values(), key=lambda n: n["id"]),
             "edges": sorted(index.edges, key=lambda e: (
                 e["source"], e["target"], e["kind"], e["file"], e["line"], e["column"])),

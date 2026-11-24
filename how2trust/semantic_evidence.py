@@ -112,7 +112,8 @@ def _batch_calls(graph, sources, wanted, nodes, refs, *, incoming_evidence):
             if context is None or not (context["conditions"] or context["valueChoices"] or counts[target] > 1 or missing_call):
                 continue
             texts = [g["text"] for g in context["conditions"]]
-            texts.append("调用 " + nodes[target]["qualname"])
+            verb = "PyCG 静态推断的调用目标为 " if e.get("engine") == "pycg" else "调用 "
+            texts.append(verb + nodes[target]["qualname"])
             texts.extend(choice["text"] for choice in context["valueChoices"])
             row = {**action_fact_row({**context, "action": e, "text": "；".join(texts)}),
                    "column": column, "target": target}

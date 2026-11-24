@@ -123,6 +123,7 @@
     parent = new Map(),
     edges = new Map(),
     out = new Map(),
+    diagnosticsByCaller = new Map(),
     owner = new Map(),
     moduleLeaves = new Map(),
     open = new Set();
@@ -130,6 +131,7 @@
   let callFocus = null,
     wholeCallGraph = false,
     scopedCode = { items: [], links: [] };
+  let dependencyCaller = null;
   let chosen = new Set(),
     displayNodes = [],
     displayEdges = [],
@@ -568,6 +570,12 @@
   function changed() {
     requestedSource = null;
     currentThread = "";
+    if (dependencyCaller && (chosen.size !== 1 || !chosen.has(dependencyCaller))) {
+      dependencyCaller = null;
+      renderGraph(false);
+    } else {
+      updateDependencyButton();
+    }
     renderInspector();
     markSelection();
   }
@@ -639,6 +647,12 @@
   }
   function indexGraph() {
     graph.nodes.forEach((n) => nodes.set(n.id, n));
+    diagnosticsByCaller.clear();
+    for (const diagnostic of graph.diagnostics) {
+      if (!diagnostic.caller) continue;
+      if (!diagnosticsByCaller.has(diagnostic.caller)) diagnosticsByCaller.set(diagnostic.caller, []);
+      diagnosticsByCaller.get(diagnostic.caller).push(diagnostic);
+    }
     graph.edges.forEach((e) => {
       edges.set(e.id, e);
       if (!out.has(e.source)) out.set(e.source, []);
@@ -1061,7 +1075,7 @@
   function businessOverview() {
     return view === "product" && scope === productRoot && $("root-layer").value !== "source" && displayNodes.length >= 6;
   }
-  function layout() {
+  function layout(items, links) {
     coordinates = new Map();
     responsiveLayoutWidth = null;
     if (businessOverview()) {
@@ -1094,10 +1108,10 @@
     }
     const depth = new Map(),
       incoming = new Set(
-        displayEdges.filter((e) => e.source !== e.target).map((e) => e.target),
+        links.filter((e) => e.source !== e.target).map((e) => e.target),
       );
     const adj = new Map();
-    for (const edge of displayEdges) {
+    for (const edge of links) {
       if (!adj.has(edge.source)) adj.set(edge.source, []);
       adj.get(edge.source).push(edge.target);
     }
@@ -1116,10 +1130,10 @@
           }
         }
     }
-    assign(displayNodes.filter((n) => !incoming.has(n.id)));
-    for (const n of displayNodes) if (!depth.has(n.id)) assign([n]);
+    assign(items.filter((n) => !incoming.has(n.id)));
+    for (const n of items) if (!depth.has(n.id)) assign([n]);
     const columns = new Map();
-    for (const n of displayNodes) {
+    for (const n of items) {
       const d = depth.get(n.id);
       if (!columns.has(d)) columns.set(d, []);
       columns.get(d).push(n);
@@ -1238,7 +1252,7 @@
       transform: "translate(" + p.x + " " + p.y + ")",
     });
     group.dataset.key = n.id;
-    const kind = kinds[n.kind] || n.kind;
+    const kind = n.dependencySites ? dependencyLabels[n.dependencySites[0].category] : kinds[n.kind] || n.kind;
     const compact = businessOverview() || view === "collaboration" && $("module-direction").value !== "all";
     group.append(
       svg("title", {}, kind + " · " + label + (view === "collaboration" ? " · 点击展开模块内部关系" : "")),
@@ -1255,9 +1269,11 @@
       }));
       labelSvg(group, 18, 23, "kind", kind);
     }
-    const name = compact && n.basis === "源码模块" ? n.label.split("/").pop() : title || n.label;
+    const name = n.dependencySites ? n.label.split(".").pop()
+      : compact && n.basis === "源码模块" ? n.label.split("/").pop() : title || n.label;
     labelSvg(group, 12, compact ? 21 : 49, "name", clip(name, compact ? Math.floor((p.w - 22) / 8) : 23));
     let detail = n.file ? n.file + ":" + n.line : "";
+    if (n.dependencySites) detail = n.label;
     if (view === "local") detail = n.nodeIds.length + " 个代码节点 · " + n.text;
     if (view === "collaboration") detail = n.basis + " · " + n.nodeIds.length + " 个节点";
     if (view === "product" || view === "structure")
@@ -1289,6 +1305,10 @@
       });
     }
     group.onclick = (event) => {
+      if (n.dependencySites) {
+        showDiagnostics(n.dependencySites);
+        return;
+      }
       if (event.shiftKey || event.ctrlKey || event.metaKey) {
         pick([n.id], true);
         return;
@@ -1389,9 +1409,11 @@
       labelX = incoming ? ax + 20 : bx - 20;
       labelY = (incoming ? ay : by) - 6;
     }
-    const relationLabel = view === "local" ? e.edgeIds.length + " 处关系" :
+    const relationLabel = e.dependencySites ? "仓外调用 · " + e.dependencySites.length + " 处" :
+      view === "local" ? e.edgeIds.length + " 处关系" :
       e.source === e.target && e.kind === "calls" ? "递归调用" : relations[e.kind] || e.kind;
-    const title = view === "local" ? e.label + " · " + relationLabel :
+    const title = e.dependencySites ? e.dependencySites[0].targetName + " · " + relationLabel :
+      view === "local" ? e.label + " · " + relationLabel :
       collab ? e.label + " · " + e.sites.length + " 处" : relationLabel;
     const el = svg("g", {
       class: "graph-edge",
@@ -1431,6 +1453,10 @@
         ),
       );
     el.onclick = (ev) => {
+      if (e.dependencySites) {
+        showDiagnostics(e.dependencySites);
+        return;
+      }
       pick([e.id || e.target], ev.ctrlKey || ev.shiftKey || tool === "select");
       selectInspector("evidence");
     };
@@ -1442,6 +1468,21 @@
     };
     layer.append(el);
   }
+  const dependencyLabels = {builtin: "Python 内置", stdlib: "Python 标准库", external: "外部依赖"};
+
+  function updateDependencyButton() {
+    const selected = chosen.size === 1 ? chosen.values().next().value : null;
+    const sites = view === "call" && selected && displayNodes.some(n => n.id === selected)
+      ? (diagnosticsByCaller.get(selected) || []).filter(d => Object.hasOwn(dependencyLabels, d.category) && d.targetName)
+      : [];
+    const button = $("call-dependencies");
+    if (dependencyCaller !== selected || !sites.length) dependencyCaller = null;
+    button.hidden = !sites.length;
+    button.setAttribute("aria-pressed", String(!!dependencyCaller));
+    button.textContent = (dependencyCaller ? "收起仓外调用" : "显示仓外调用") + "（" + sites.length + " 处）";
+    return sites;
+  }
+
   function renderGraph(initial = !wholeCallGraph) {
     const drawing = $("drawing");
     drawing.replaceChildren();
@@ -1520,16 +1561,30 @@
         range.textContent = wholeCallGraph ? "仅看直接调用" : "展开完整调用图";
       }
     }
-    layout();
+    const sites = updateDependencyButton();
+    const dependencyNodes = new Map();
+    if (dependencyCaller) {
+      for (const site of sites) {
+        const id = "dependency:" + site.targetName;
+        if (!dependencyNodes.has(id)) dependencyNodes.set(id, {id, label: site.targetName, dependencySites: []});
+        dependencyNodes.get(id).dependencySites.push(site);
+      }
+    }
+    const drawnNodes = [...displayNodes, ...dependencyNodes.values()];
+    const drawnEdges = [...displayEdges];
+    for (const node of dependencyNodes.values()) {
+      drawnEdges.push({source: dependencyCaller, target: node.id, dependencySites: node.dependencySites});
+    }
+    layout(drawnNodes, drawnEdges);
     const bundles = new Map();
-    for (const e of displayEdges) {
+    for (const e of drawnEdges) {
       const key = JSON.stringify([e.source, e.target]);
       if (!bundles.has(key)) bundles.set(key, []);
       bundles.get(key).push(e);
     }
     for (const group of bundles.values())
       group.forEach((e, i) => drawLink(e, i, group.length));
-    displayNodes.forEach(drawCard);
+    drawnNodes.forEach(drawCard);
     fit(initial);
     $("empty-graph").hidden = !!displayNodes.length || (view === "product" && !!generation);
     $("empty-graph").textContent =
@@ -1550,6 +1605,7 @@
     $("canvas-count").textContent =
       (!range.hidden && !wholeCallGraph ? displayNodes.length + " / " + scopedCode.items.length : displayNodes.length) +
       " 节点 · " + displayEdges.length + " 关系";
+    if (dependencyNodes.size) $("canvas-count").textContent += " · " + dependencyNodes.size + " 个仓外目标";
     if (view === "collaboration")
       $("canvas-count").textContent = displayEdges.length + " / " + moduleLinks.size + " 条模块关系";
     $("canvas-name").textContent = !range.hidden && !wholeCallGraph
@@ -1754,7 +1810,7 @@
         const hits = [];
         for (const [id, r] of coordinates)
           if (
-            r.x < box.x + box.w &&
+            !id.startsWith("dependency:") && r.x < box.x + box.w &&
             r.x + r.w > box.x &&
             r.y < box.y + box.h &&
             r.y + r.h > box.y
@@ -1853,7 +1909,40 @@
       if (tree.has(id)) for (const n of aggregate(tree.get(id))) active.add(n);
     if (view !== "product" && active.has(scope.id))
       for (const n of displayNodes) active.add(n.id);
+    if (active.size === 1) return diagnosticsByCaller.get(active.values().next().value) || [];
     return graph.diagnostics.filter((d) => active.has(d.caller));
+  }
+  function showMethodCalls(body, method) {
+    const labels = {local: "仓内", builtin: "内置", stdlib: "标准库", external: "外部依赖", unresolved: "未解析", legacy: "未分类"};
+    const groups = new Map([["local", (out.get(method.id) || []).filter(edge => edge.kind === "calls")]]);
+    if (graph.callDiagnosticVersion) {
+      for (const key of ["builtin", "stdlib", "external", "unresolved"]) groups.set(key, []);
+    }
+    for (const diagnostic of diagnosticsByCaller.get(method.id) || []) {
+      let key = diagnostic.category;
+      if (!Object.hasOwn(labels, key)) {
+        // Older exports label call records in the message and have no target classification.
+        if (!/^(调用目标未解析(?: · |$)|嵌套表达式的调用目标未解析$)/.test(diagnostic.message)) continue;
+        key = "legacy";
+      }
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(diagnostic);
+    }
+    const count = [...groups.values()].reduce((total, records) => total + records.length, 0);
+    const block = html("section", "method-calls");
+    block.append(heading("已记录的直接调用点", count));
+    const filters = html("div", "call-counts");
+    for (const [key, records] of groups) {
+      const label = labels[key] + " " + records.length;
+      const bucket = records.length ? action(label, "", () => {
+        const byPosition = [...records].sort((a, b) => a.line - b.line || (a.column || 0) - (b.column || 0));
+        showDiagnostics(byPosition, method.qualname + " · " + labels[key] + "调用点");
+      }) : html("span", "", label);
+      filters.append(bucket);
+    }
+    block.append(filters);
+    if (!graph.callDiagnosticVersion) block.append(html("p", "subtle", "旧快照仅计入能归属到此方法的记录，调用分类可能缺失。"));
+    body.append(block);
   }
   function series(host, items, show) {
     const pageSize = 12;
@@ -2106,6 +2195,7 @@
         series(body, item.sites, site => {
           const article = html("article", "module-site");
           article.append(html("strong", "", edgeName(site)), proof(site, selected.length === 1));
+          showInferredTarget(article, edges.get(site.id));
           showConditions(article, site.conditions);
           showValueChoices(article, site.valueChoices, "调用参数如何取值");
           body.append(article);
@@ -2138,6 +2228,8 @@
       if (scopedCode.items.length) body.append(html("p", "subtle", "点击成员查看定义，点击连线查看产生这条关系的源码。"));
       return;
     }
+    const method = selected && nodes.get(targetKey(selected));
+    if (method?.kind === "function" || method?.kind === "method") showMethodCalls(body, method);
     if (chosen.size === 1 && view !== "structure" && view !== "collaboration") showInterpretation(body, lookup(selected));
     body.append(heading("选中范围", chosen.size));
     const refs = new Map();
@@ -2150,7 +2242,9 @@
       const item = lookup(graphKeys()[0]);
       const definition =
         item.nodeIds?.length === 1 ? nodes.get(item.nodeIds[0]) : item;
-      if (definition?.basis) {
+      if (definition?.engine === "pycg") {
+        if (!callSites.has(selected)) showInferredTarget(body, definition);
+      } else if (definition?.basis) {
         body.append(heading("判定依据"), html("p", "subtle", definition.basis));
       }
       if (definition?.expression) {
@@ -2230,16 +2324,25 @@
         ),
       );
   }
+  function showInferredTarget(block, edge) {
+    if (edge?.engine !== "pycg") return;
+    const target = nodes.get(edge.target);
+    block.append(html("p", "subtle", edge.basis),
+      html("h4", "", "目标定义 · " + target.qualname),
+      proof({file: target.file, line: target.line, end: target.line}));
+  }
   function callSiteEvidence(site) {
     const block = html("article", "module-site");
     block.dataset.edge = site.edgeId;
     const caller = nodes.get(site.caller), callee = nodes.get(site.callee);
+    const edge = edges.get(site.edgeId);
     block.append(html("strong", "", caller.qualname + " → " + callee.qualname));
+    showInferredTarget(block, edge);
     if (site.kind === "handles") block.append(html("p", "subtle", "入口绑定处理函数"));
     if (site.conditions.length) {
       block.append(html("h4", "", "源码中的触发条件"));
       showConditions(block, site.conditions);
-    } else if (site.kind !== "handles")
+    } else if (site.kind !== "handles" && edge?.engine !== "pycg")
       block.append(html("p", "subtle", "执行到此处时调用。此前的返回或异常可能提前结束流程。"));
     showValueChoices(block, site.valueChoices, "调用参数如何取值");
     block.append(html("h4", "", site.kind === "handles" ? "绑定位置" : "调用位置"),
@@ -2296,14 +2399,20 @@
     });
     return true;
   }
-  function showDiagnostics(list) {
+  function showDiagnostics(list, title = "分析记录") {
     const panel = $("diag-list");
+    $("diag-dialog").querySelector("h2").textContent = title;
     panel.replaceChildren();
     if (!list.length)
       panel.append(html("p", "small-empty", "当前没有分析记录。"));
     series(panel, list, (d) => {
       const item = html("div", "diag-item");
-      item.append(html("p", "", d.message));
+      const target = d.kind === "calls" && nodes.get(d.target);
+      const message = target ? (d.expression ? d.expression + " → " : "") + target.qualname : d.message;
+      item.append(html("p", "", message));
+      if (d.targetName && !message.includes(d.targetName)) item.append(html("code", "expression", d.targetName));
+      if (d.targetName && d.expression && d.expression !== d.targetName)
+        item.append(html("code", "expression", "调用写法 · " + d.expression));
       if (d.file) item.append(proof(d));
       panel.append(item);
     });
@@ -2823,6 +2932,10 @@
         pick([callFocus]);
       }
       render();
+    };
+    $("call-dependencies").onclick = () => {
+      dependencyCaller = dependencyCaller ? null : chosen.values().next().value;
+      renderGraph(false);
     };
     bindCanvas();
     bindFullscreen();
