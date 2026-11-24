@@ -1016,7 +1016,14 @@ dialog {
 dialog::backdrop {
   background: #172e2870;
 }
-#model-settings { background: transparent; cursor: pointer; white-space: nowrap; font: inherit; font-size: 13px; }
+#model-settings, #compare-graph { background: transparent; cursor: pointer; white-space: nowrap; font: inherit; font-size: 13px; }
+#compare-dialog { width: min(740px, 94vw); color: var(--ink); }
+#compare-dialog label, #compare-status { display: block; margin: 10px 0; font-size: 14px; }
+#previous-graph { max-width: 100%; }
+#compare-result > details { padding: 9px 0; border-top: 1px solid var(--line); }
+#compare-result summary { cursor: pointer; line-height: 1.6; }
+#compare-result pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f3f6f2; padding: 8px; }
+.source-fact + .source-fact { border-top: 1px solid var(--line); margin-top: 12px; }
 #model-dialog { width: min(490px, 94vw); color: var(--ink); }
 #model-form, #model-form label { display: grid; gap: 6px; }
 #model-form { gap: 13px; }
@@ -1140,9 +1147,11 @@ dialog::backdrop {
     margin-bottom: 8px;
   }
   .topbar {
-    padding: 0 12px;
-    gap: 9px;
-    height: 52px;
+    flex-wrap: wrap;
+    padding: 7px 12px;
+    gap: 6px 9px;
+    height: auto;
+    min-height: 52px;
   }
   .brand {
     font-size: 19px;
@@ -1271,7 +1280,7 @@ html.graph-fullscreen { overflow: hidden; }
   <header class="topbar">
     <a class="brand" href="#" id="home"><i class="brandmark" data-icon="branch"></i>How2Trust</a>
     <span class="head-divider"></span><span class="app-label">架构工作台</span>
-    <span class="top-spacer"></span><button id="model-settings" type="button" class="export-link" aria-haspopup="dialog">模型设置</button><a id="review-link" class="export-link" href="/review" hidden>交付验收</a><a id="export" class="export-link" href="/export.html" download="how2trust.html" hidden><i data-icon="download"></i>导出 HTML</a><span class="connection" id="connection">正在加载</span>
+    <span class="top-spacer"></span><button id="compare-graph" type="button" class="export-link" aria-haspopup="dialog" hidden>核对旧图</button><button id="model-settings" type="button" class="export-link" aria-haspopup="dialog">模型设置</button><a id="review-link" class="export-link" href="/review" hidden>交付验收</a><a id="export" class="export-link" href="/export.html" download="how2trust.html" hidden><i data-icon="download"></i>导出 HTML</a><span class="connection" id="connection">正在加载</span>
     <span class="snapshot" id="snapshot"></span>
   </header>
   <main class="workspace">
@@ -1341,6 +1350,13 @@ html.graph-fullscreen { overflow: hidden; }
     </aside>
   </main>
   <dialog id="diag-dialog"><div class="dialog-title"><h2>分析记录</h2><button class="icon-btn" id="diag-close" aria-label="关闭"><i data-icon="close"></i></button></div><div id="diag-list"></div></dialog>
+  <dialog id="compare-dialog" aria-labelledby="compare-title">
+    <div class="dialog-title"><h2 id="compare-title">核对旧图中的业务结论</h2><button type="button" class="icon-btn" id="compare-close" aria-label="关闭核对结果"><i data-icon="close"></i></button></div>
+    <label for="previous-graph">选择含业务讲解的工作台 HTML 或架构 JSON</label>
+    <input id="previous-graph" type="file" accept=".html,.json">
+    <p id="compare-status" role="status"></p>
+    <div id="compare-result"></div>
+  </dialog>
   <dialog id="model-dialog" aria-labelledby="model-title">
     <div class="dialog-title"><h2 id="model-title">模型设置</h2><button class="icon-btn" id="model-close" aria-label="关闭模型设置"><i data-icon="close"></i></button></div>
     <p id="model-offline" hidden>这是离线快照。将源码目录拖到 How2Trust.cmd，在打开的本地工作台右上角点「模型设置」，即可配置模型并提问。</p>
@@ -1506,7 +1522,7 @@ html.graph-fullscreen { overflow: hidden; }
     questionDraft = "",
     query = "";
   const graphKeys = () => Array.from(chosen);
-  const modules = new Map(), moduleLinks = new Map();
+  const modules = new Map(), moduleLinks = new Map(), callSites = new Map();
   const linksPerPage = 5;
   let modulePage = 0;
   let moduleDrill = null;
@@ -1550,12 +1566,15 @@ html.graph-fullscreen { overflow: hidden; }
   function indexCollaboration() {
     modules.clear();
     moduleLinks.clear();
+    callSites.clear();
+    for (const site of graph.collaboration?.internalSites || []) callSites.set(site.edgeId, site);
     for (const m of graph.collaboration?.modules || [])
       modules.set(m.id, {...m, kind: "collaborationModule", evidence: m.refs});
     const counts = new Map();
     for (const r of graph.collaboration?.relations || []) {
       const label = modules.get(r.source).label + " → " + modules.get(r.target).label;
       moduleLinks.set(r.id, {...r, kind: "collaboration", label});
+      for (const site of r.sites) callSites.set(site.edgeId, site);
       counts.set(r.source, (counts.get(r.source) || 0) + 1);
     }
     const focus = $("module-focus"), last = focus.value;
@@ -1592,17 +1611,27 @@ html.graph-fullscreen { overflow: hidden; }
   function indexSemantics() {
     interpretations = new Map((graph.semantics?.items || []).map(item => [item.nodeId, item]));
     sharedCalls = orderSharedCalls(graph.semantics);
-    const groups = graph.semantics?.groups || [];
-    const entryGroups = groups.filter(group => group.children.some(leaf =>
-      leaf.nodeIds.some(id => nodes.get(id)?.kind === "entry")));
-    const legacyLayers = Number(graph.semantics?.promptVersion || 0) <= 6 && entryGroups.length;
-    const internal = legacyLayers ? groups.filter(group => !entryGroups.includes(group)) : [];
-    rootLayers = {business: legacyLayers ? entryGroups : groups, internal, source: graph.tree.children};
     const layers = $("root-layer");
-    layers.replaceChildren(new Option("业务能力", "business"));
+    const previousLayer = (rootLayers?.all.length || layers.value === "source") ? layers.value : "";
+    const groups = graph.semantics?.groups || [];
+    const entryGroups = new Set(groups.filter(group => group.children.some(leaf =>
+      leaf.nodeIds.some(id => nodes.get(id)?.kind === "entry"))));
+    const internal = entryGroups.size ? groups.filter(group => !entryGroups.has(group)) : [];
+    // The role-projected source tree keeps production roots separate from tests and examples.
+    function hasProductionMember(branch) {
+      return branch.nodeIds.some(id => graph.fileRoles[nodes.get(id).file] === "production") ||
+        branch.children.some(hasProductionMember);
+    }
+    const source = graph.fileRoles ? graph.tree.children.filter(hasProductionMember) : graph.tree.children;
+    rootLayers = {all: groups, business: internal.length ? [...entryGroups] : groups, internal, source};
+    layers.replaceChildren();
+    if (internal.length) layers.add(new Option("全部业务分组", "all"));
+    layers.add(new Option(internal.length ? "入口业务能力" : "业务能力", "business"));
     if (internal.length) layers.add(new Option("内部职责", "internal"));
-    if (graph.semantics && Number(graph.semantics.promptVersion || 0) <= 6)
-      layers.add(new Option("源码与配置", "source"));
+    if (source.length) layers.add(new Option("源码与配置", "source"));
+    // Preserve each guide's initial overview. Available filters depend only on its data.
+    const defaultLayer = internal.length && Number(graph.semantics?.promptVersion) > 6 ? "all" : "business";
+    layers.value = [...layers.options].some(option => option.value === previousLayer) ? previousLayer : defaultLayer;
     productRoot = groups.length ? {...graph.tree, children: [...rootLayers.business, ...internal, ...graph.tree.children]} : graph.tree;
     tree.set(productRoot.id, productRoot);
     for (const group of groups) {
@@ -1840,7 +1869,7 @@ html.graph-fullscreen { overflow: hidden; }
     moduleDrill = null;
     const oldSourceLayer = view === "product" && $("root-layer").value === "source";
     setScope(id);
-    if (scope === productRoot) view = graph.semantics && view !== "structure" ? "product" : "structure";
+    if (scope === productRoot) view = view === "product" || (graph.semantics && view !== "structure") ? "product" : "structure";
     else if (scope.children.length) view = scope.kind === "capability" || oldSourceLayer ? "product" : "structure";
     else view = scope.kind === "class" ? "class" : "call";
     selectScopeInView();
@@ -2048,8 +2077,8 @@ html.graph-fullscreen { overflow: hidden; }
       if (!members.length) nav.append(html("p", "small-empty", "没有匹配的模块成员。"));
       return;
     }
-    const businessOnly = view === "product" && (!graph.semantics || Number(graph.semantics.promptVersion) > 6);
-    $("nav-title").textContent = view === "collaboration" ? "协作模块" : businessOnly ? "生产业务" :
+    const productView = view === "product", sourceLayer = productView && $("root-layer").value === "source";
+    $("nav-title").textContent = view === "collaboration" ? "协作模块" : sourceLayer ? "源码与配置" : productView ? "生产业务" :
       view === "structure" ? "整仓结构" : "产品结构";
     nav.setAttribute("aria-label", $("nav-title").textContent);
     $("collapse").hidden = view === "collaboration";
@@ -2076,14 +2105,14 @@ html.graph-fullscreen { overflow: hidden; }
       if (!visible.length) nav.append(html("p", "small-empty", "没有匹配的生产模块。"));
       return;
     }
-    if (businessOnly && !graph.semantics?.groups?.length) {
+    if (productView && !sourceLayer && !graph.semantics?.groups?.length) {
       nav.append(html("p", "small-empty", "生成业务图后可浏览业务分组。"));
       return;
     }
     const matches = new Set();
     if (query)
       for (const item of tree.values()) {
-        if (view !== "structure" && item.nodeIds?.length === 1 && groupedSymbols.has(item.nodeIds[0]) && !capabilityLeaves.has(item.id)) continue;
+        if (view !== "structure" && !sourceLayer && item.nodeIds?.length === 1 && groupedSymbols.has(item.nodeIds[0]) && !capabilityLeaves.has(item.id)) continue;
         if (item.label.toLowerCase().includes(query) || (view !== "structure" && matchesBusiness(item))) {
           let id = item.id;
           while (id && !matches.has(id)) {
@@ -2122,10 +2151,10 @@ html.graph-fullscreen { overflow: hidden; }
       if (open.has(item.id) || query) {
         let section = "";
         const visibleChildren = item !== productRoot ? item.children : view === "structure" ? graph.tree.children
-          : businessOnly ? rootLayers.business : item.children;
+          : productView ? (query && !sourceLayer ? rootLayers.all : rootLayers[$("root-layer").value]) : item.children;
         for (const child of visibleChildren) {
           if (query && !matches.has(child.id)) continue;
-          if (item === productRoot && !businessOnly && view !== "structure" && graph.semantics?.groups?.length) {
+          if (item === productRoot && !productView && view !== "structure" && graph.semantics?.groups?.length) {
             const label = child.kind !== "capability" ? "源码与配置" :
               rootLayers.internal.includes(child) ? "内部职责" : "业务能力";
             if (section !== label) nav.append(html("h3", "tree-section", label));
@@ -2139,7 +2168,7 @@ html.graph-fullscreen { overflow: hidden; }
     if (query) {
       const symbols = graph.nodes.filter(n => {
         if (!["function", "method", "class"].includes(n.kind)) return false;
-        if (businessOnly && graph.fileRoles?.[n.file] && graph.fileRoles[n.file] !== "production") return false;
+        if (productView && graph.fileRoles?.[n.file] && graph.fileRoles[n.file] !== "production") return false;
         const leaf = moduleLeaves.get(n.file);
         const moduleName = leaf ? nodes.get(leaf.nodeIds[0]).qualname : "";
         return matchesBusiness(n) || [moduleName + "." + n.qualname, n.file + "::" + n.qualname]
@@ -2227,9 +2256,13 @@ html.graph-fullscreen { overflow: hidden; }
           " · " +
           scope.children.length +
           " 个下级节点";
-    if (scope === productRoot && view === "product" && graph.semantics) {
+    if (scope === productRoot && view === "product" && $("root-layer").value === "source") {
+      $("metrics").textContent = "生产源码中的模块、显式入口和配置分组";
+    } else if (scope === productRoot && view === "product" && graph.semantics) {
       const guide = graph.semantics;
-      $("metrics").textContent = (guide.groups?.length || 0) + " 个业务分组 · " + guide.items.length + " 项源码讲解 · " +
+      const layer = $("root-layer").value;
+      const groupCount = rootLayers[layer].length + (layer === "internal" ? " 个组内无显式入口的分组" : " 个业务分组");
+      $("metrics").textContent = groupCount + " · " + guide.items.length + " 项源码讲解 · " +
         (guide.overview.claims?.length || 0) + " 条总览结论";
     }
     if (view === "collaboration") {
@@ -2244,8 +2277,7 @@ html.graph-fullscreen { overflow: hidden; }
       b.setAttribute("aria-pressed", String(active));
     });
     $("canvas-name").textContent = viewNames[view];
-    $("root-layer").hidden = !(view === "product" && scope === productRoot && graph.semantics?.groups?.length &&
-      $("root-layer").options.length > 1);
+    $("root-layer").hidden = view !== "product" || $("root-layer").options.length < 2;
     showSharedCalls();
     renderGraph();
     renderInspector();
@@ -2264,8 +2296,7 @@ html.graph-fullscreen { overflow: hidden; }
       : 78;
   }
   function businessOverview() {
-    return view === "product" && scope === productRoot && displayNodes.length >= 6 &&
-      Number(graph.semantics?.promptVersion) > 6;
+    return view === "product" && scope === productRoot && $("root-layer").value !== "source" && displayNodes.length >= 6;
   }
   function layout() {
     coordinates = new Map();
@@ -2693,8 +2724,7 @@ html.graph-fullscreen { overflow: hidden; }
       scopedCode = { items: [], links: [] };
       const children = scope !== productRoot ? scope.children : view === "structure"
         ? graph.tree.children : rootLayers[$("root-layer").value] || [];
-      displayNodes = view === "product" && !graph.semantics?.groups?.length && scope === productRoot
-        ? [] : [scope, ...children];
+      displayNodes = view === "product" && scope === productRoot && !children.length ? [] : [scope, ...children];
       displayEdges = children.map((child) => ({
         source: scope.id,
         target: child.id,
@@ -3081,7 +3111,7 @@ html.graph-fullscreen { overflow: hidden; }
   function showSharedCalls() {
     const panel = $("shared-calls"), list = $("shared-list");
     const active = view === "product" && (scope.kind === "capability" ||
-      scope === productRoot && $("root-layer").value === "business");
+      scope === productRoot && ["all", "business"].includes($("root-layer").value));
     const members = new Set(scope.children.flatMap(child => child.nodeIds));
     const visible = active ? sharedCalls.filter(row => scope.id === productRoot.id ||
       members.has(row.target) || row.paths.some(path => members.has(path.entry))) : [];
@@ -3119,6 +3149,80 @@ html.graph-fullscreen { overflow: hidden; }
       anchor.append(action("在图中定位 " + target.qualname, "text-btn", () => locateSymbol(target, ref)));
     return anchor;
   }
+  function showConditions(parent, conditions) {
+    for (const condition of conditions || []) {
+      parent.append(html("p", "condition", condition.text), readingAnchor(condition.predicate || condition));
+      if (condition.kind === "assertion" && condition.predicate &&
+          (condition.line !== condition.predicate.line || condition.end !== condition.predicate.end)) {
+        parent.append(html("p", "subtle", "完整断言语句"), readingAnchor(condition));
+      }
+      if (condition.exit) {
+        parent.append(html("p", "condition", "分支末尾 · " + condition.exit.text), readingAnchor(condition.exit));
+      }
+    }
+  }
+  function showValueChoices(parent, choices, title) {
+    if (!choices?.length) return;
+    parent.append(html("h4", "", title));
+    for (const choice of choices) {
+      parent.append(html("p", "condition", choice.text), readingAnchor(choice));
+    }
+  }
+  function showUncitedEvidence(parent, facts) {
+    const missing = new Map();
+    for (const fact of facts) {
+      for (const ref of fact.uncoveredEvidence || []) {
+        missing.set(JSON.stringify([ref.file, ref.line, ref.end, ref.role, ref.text]), ref);
+      }
+    }
+    if (!missing.size) return;
+    const details = html("details", "reading-citations");
+    details.append(html("summary", "", "结论引用未覆盖的源码依据（" + missing.size + "）"),
+      html("p", "subtle", "以下判断、退出或取值影响已引用的动作，点开可补读对应源码。"));
+    const roles = {condition: "执行条件", exit: "提前退出", value: "条件取值"};
+    for (const ref of missing.values())
+      details.append(html("p", "condition", roles[ref.role] + " · " + ref.text), readingAnchor(ref));
+    parent.append(details);
+  }
+  function showGroupEvidence(parent, label) {
+    const evidence = graph.semantics?.groupEvidence?.[label];
+    if (!evidence) return;
+    const details = html("details", "reading-citations");
+    details.append(html("summary", "", "查看分组依据"));
+    if (evidence.reason) {
+      details.append(html("p", "reading-text", evidence.reason.text));
+      for (const ref of evidence.reason.refs) details.append(readingAnchor(ref));
+    }
+    for (const origin of evidence.origins) {
+      const members = origin.nodeIds.map(id => nodes.get(id)).filter(Boolean);
+      const part = html("details", "reading-citations");
+      part.append(html("summary", "", origin.label + " · " + members.length + " 个源码成员"));
+      series(part, members, node => part.append(action(node.qualname + " · " + node.file + " L" + node.line,
+        "relation-row", () => locateSymbol(node, node))));
+      details.append(part);
+    }
+    for (const shared of evidence.sharedTargets || []) {
+      const target = nodes.get(shared.target);
+      if (!target) continue;
+      const part = html("details", "reading-citations");
+      part.append(html("summary", "", "共同调用 " + target.qualname));
+      for (const id of shared.edgeIds) {
+        const edge = edges.get(id);
+        if (edge) part.append(readingAnchor(edge));
+      }
+      details.append(part);
+    }
+    if (evidence.boundaryCalls?.length) {
+      const calls = html("details", "reading-citations");
+      calls.append(html("summary", "", "跨职责调用示例"));
+      for (const id of evidence.boundaryCalls) {
+        const edge = edges.get(id);
+        if (edge) calls.append(html("p", "subtle", edgeName(edge)), readingAnchor(edge));
+      }
+      details.append(calls);
+    }
+    parent.append(details);
+  }
   function showInterpretation(body, selected) {
     const guide = graph.semantics;
     if (!guide || !selected) return;
@@ -3128,6 +3232,7 @@ html.graph-fullscreen { overflow: hidden; }
       section.append(html("div", "reading-source", "模型业务分组 · " + guide.provider + " / " + guide.model),
         html("h3", "", selected.label));
       body.append(section);
+      showGroupEvidence(section, selected.label);
       series(section, selected.children, leaf => {
         section.append(action(businessLabel(leaf), "relation-row", () => navigate(leaf.id)),
           html("p", "reading-text", interpretation(leaf).text));
@@ -3158,9 +3263,16 @@ html.graph-fullscreen { overflow: hidden; }
         article.append(refs);
         const facts = graph.overviewFacts?.[index] || [];
         if (facts.length) {
+          showUncitedEvidence(article, facts);
           const conditions = html("details", "reading-citations");
           conditions.append(html("summary", "", "源码中的分支与筛选（" + facts.length + "）"));
-          for (const fact of facts) conditions.append(html("p", "reading-text", fact.text), readingAnchor(fact));
+          for (const fact of facts) {
+            const row = html("div", "source-fact");
+            row.append(html("p", "reading-text", fact.action?.text || fact.text), readingAnchor(fact.action || fact));
+            showConditions(row, fact.conditions);
+            showValueChoices(row, fact.valueChoices, "表达式如何取值");
+            conditions.append(row);
+          }
           article.append(conditions);
         }
         section.append(article);
@@ -3193,8 +3305,10 @@ html.graph-fullscreen { overflow: hidden; }
     if (requestedSource) body.append(heading("定位到的源码"), proof(requestedSource, true));
     const selected = chosen.size === 1 && graphKeys()[0];
     if (view === "collaboration" && selected && showCollaborationEvidence(body, selected)) return;
+    if (selected && callSites.has(selected)) body.append(callSiteEvidence(callSites.get(selected)));
     if (moduleDrill && scope === productRoot && selected === moduleDrill.id) {
       body.append(html("h3", "module-title", modules.get(selected).label));
+      if (modules.get(selected).groupId) showGroupEvidence(body, modules.get(selected).label);
       const counts = new Map();
       for (const edge of scopedCode.links) counts.set(edge.kind, (counts.get(edge.kind) || 0) + 1);
       if (counts.size) {
@@ -3296,6 +3410,36 @@ html.graph-fullscreen { overflow: hidden; }
         ),
       );
   }
+  function callSiteEvidence(site) {
+    const block = html("article", "module-site");
+    block.dataset.edge = site.edgeId;
+    const caller = nodes.get(site.caller), callee = nodes.get(site.callee);
+    block.append(html("strong", "", caller.qualname + " → " + callee.qualname));
+    if (site.kind === "handles") block.append(html("p", "subtle", "入口绑定处理函数"));
+    if (site.conditions.length) {
+      block.append(html("h4", "", "源码中的触发条件"));
+      showConditions(block, site.conditions);
+    } else if (site.kind !== "handles")
+      block.append(html("p", "subtle", "执行到此处时调用。此前的返回或异常可能提前结束流程。"));
+    showValueChoices(block, site.valueChoices, "调用参数如何取值");
+    block.append(html("h4", "", site.kind === "handles" ? "绑定位置" : "调用位置"),
+      proof(site, true), action("在图中定位 " + caller.qualname, "text-btn", () => locateSymbol(caller, site)));
+    if (site.entryPaths?.length) {
+      const paths = html("details", "reading-citations");
+      paths.append(html("summary", "", "可定位的入口路径"));
+      for (const path of site.entryPaths) {
+        paths.append(html("p", "reading-text", businessLabel(nodes.get(path.entry))));
+        for (const id of path.edges) {
+          const edge = edges.get(id);
+          if (!edge) continue;
+          paths.append(html("p", "subtle", edgeName(edge)), readingAnchor(edge));
+          if (id !== site.edgeId) showConditions(paths, callSites.get(id)?.conditions);
+        }
+      }
+      block.append(paths);
+    }
+    return block;
+  }
   function showCollaborationEvidence(body, id) {
     const relation = moduleLinks.get(id);
     if (relation) {
@@ -3303,21 +3447,7 @@ html.graph-fullscreen { overflow: hidden; }
       const list = html("div");
       body.append(list);
       series(list, relation.sites, site => {
-        const block = html("article", "module-site");
-        block.dataset.edge = site.edgeId;
-        const caller = nodes.get(site.caller), callee = nodes.get(site.callee);
-        block.append(html("strong", "", caller.qualname + " → " + callee.qualname));
-        if (site.kind === "handles") block.append(html("p", "subtle", "入口绑定处理函数"));
-        if (site.conditions.length) {
-          block.append(html("h4", "", "源码中的触发条件"));
-          for (const condition of site.conditions) {
-            block.append(html("p", "condition", condition.text), readingAnchor(condition));
-          }
-        } else if (site.kind !== "handles")
-          block.append(html("p", "subtle", "执行到此处时调用；此前的返回或异常可能提前结束流程。"));
-        block.append(html("h4", "", site.kind === "handles" ? "绑定位置" : "调用位置"),
-          proof(site, true), action("在图中定位 " + caller.qualname, "text-btn", () => locateSymbol(caller, site)));
-        list.append(block);
+        list.append(callSiteEvidence(site));
       });
       return true;
     }
@@ -3325,6 +3455,7 @@ html.graph-fullscreen { overflow: hidden; }
     if (!module) return false;
     body.append(html("h3", "module-title", module.label));
     if (module.basis) body.append(html("p", "subtle", module.basis));
+    if (module.groupId) showGroupEvidence(body, module.label);
     body.append(action("展开模块内部关系图", "relation-row", () => enterModule(id)));
     const related = [...moduleLinks.values()].filter(r => r.source === id || r.target === id);
     body.append(heading("模块协作", related.length));
@@ -3357,6 +3488,61 @@ html.graph-fullscreen { overflow: hidden; }
       panel.append(item);
     });
     $("diag-dialog").showModal();
+  }
+  function bindClaimComparison() {
+    if (offline) return;
+    const button = $("compare-graph"), dialog = $("compare-dialog"), input = $("previous-graph");
+    const status = $("compare-status"), result = $("compare-result");
+    const labels = {unchanged: "引用仍匹配", moved: "位置移动", changed: "实现有变化",
+      missing: "原证据缺失", unresolved: "需人工定位"};
+    button.hidden = false;
+    button.onclick = () => dialog.showModal();
+    $("compare-close").onclick = () => dialog.close();
+    function showRef(parent, ref) {
+      parent.append(html("p", "reading-text", labels[ref.status] + " · " + ref.reason));
+      const old = html("details", "reading-citations");
+      old.append(html("summary", "", "旧图 · " + ref.old.file + " L" + ref.old.line + "–" + ref.old.end),
+        html("pre", "", ref.oldText));
+      for (const condition of ref.oldConditions || [])
+        old.append(html("p", "condition", condition.file + " L" + condition.line + " · " + condition.text));
+      parent.append(old);
+      if (ref.new) {
+        parent.append(proof(ref.new));
+        const target = sourceNode(ref.new.file, ref.new.line);
+        if (target) parent.append(action("在当前图中定位", "text-btn", () => {
+          dialog.close();
+          locateSymbol(target, ref.new);
+        }));
+      }
+      for (const condition of ref.newConditions || [])
+        parent.append(html("p", "condition", condition.text), proof(condition));
+    }
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      input.disabled = true;
+      result.replaceChildren();
+      status.textContent = "正在用当前源码核对 " + file.name + "…";
+      try {
+        const report = await api("semantics/compare", "POST", {previous: await file.text()});
+        status.textContent = "旧图 #" + report.previousSnapshot.slice(0, 9) + " → 当前 #" +
+          report.currentSnapshot.slice(0, 9) + " · " + Object.entries(labels)
+            .map(([key, label]) => label + " " + report.counts[key]).join("，");
+        const needsReview = c => ["changed", "missing", "unresolved"].includes(c.status);
+        const claims = [...report.claims].sort((a, b) => Number(needsReview(b)) - Number(needsReview(a)));
+        series(result, claims, claim => {
+          const item = html("details");
+          item.append(html("summary", "", labels[claim.status] + " · " + claim.text));
+          for (const ref of claim.refs) showRef(item, ref);
+          result.append(item);
+        });
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        input.value = "";
+        input.disabled = false;
+      }
+    };
   }
   function offlineNotes(notes) {
     localStorage.setItem(
@@ -3723,6 +3909,7 @@ html.graph-fullscreen { overflow: hidden; }
     open.add(scope.id);
     $("connection").textContent = offline ? "离线快照" : "本地工作区";
     bindModelSettings();
+    bindClaimComparison();
     $("export").hidden = offline;
     $("review-link").hidden = offline || !graph.hasReview;
     $("snapshot").textContent = "#" + String(graph.snapshot).slice(0, 9);
@@ -3730,7 +3917,11 @@ html.graph-fullscreen { overflow: hidden; }
     document.title = graph.name + " · How2Trust";
     $("diag-count").textContent = graph.diagnostics.length;
     $("diagnostics").onclick = () => showDiagnostics(graph.diagnostics);
-    $("root-layer").onchange = () => render();
+    $("root-layer").onchange = () => {
+      setScope(productRoot.id);
+      selectScopeInView();
+      render();
+    };
     $("generate-semantics").onclick = $("generation-retry").onclick = generateBusinessGraph;
     $("generation-settings").onclick = () => openModelSettings("semantics");
     $("diag-close").onclick = () => $("diag-dialog").close();

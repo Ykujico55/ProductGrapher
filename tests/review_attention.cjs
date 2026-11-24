@@ -14,8 +14,8 @@ async function main() {
   let browser;
   try {
     execFileSync(process.env.PYTHON || "python", ["-B", "-X", "utf8", "-m", "how2trust", "review",
-      "examples/delivery/submission", "--base-dir", "examples/delivery/baseline", "--spec",
-      "examples/delivery/contract.json", "--run-checks", "-o", file], {cwd: root, windowsHide: true});
+      "tests/fixtures/delivery/submission", "--base-dir", "tests/fixtures/delivery/baseline", "--spec",
+      "tests/fixtures/delivery/contract.json", "--run-checks", "-o", file], {cwd: root, windowsHide: true});
     browser = await chromium.launch({channel: "chrome", executablePath: process.env.CHROME_BIN});
     const page = await browser.newPage();
     await page.goto(pathToFileURL(file).href);

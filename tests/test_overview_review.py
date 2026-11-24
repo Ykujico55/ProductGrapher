@@ -4,9 +4,9 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from how2trust.overview_review import review_context
+from how2trust.overview_review import integrate_overview, review_context
 from how2trust.project import build_graph
-from how2trust.semantics import generate_semantics, upgrade_overview
+from how2trust.semantics import PROMPT_VERSION, generate_semantics, upgrade_overview
 
 
 class Reader:
@@ -48,6 +48,42 @@ class Reader:
 
 
 class OverviewReviewTests(unittest.TestCase):
+    def test_review_gets_separate_trigger_and_value_evidence_for_each_cited_call(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            rows = ["def deliver(value): pass", "", "def submit(blocked, urgent):",
+                    "    if blocked:", "        return"]
+            rows.extend(["    # intervening implementation detail"] * 85)
+            first = len(rows) + 1
+            rows.extend(['    deliver("express" if urgent else "regular")', "",
+                         "def retry(enabled):", "    if enabled:", '        deliver("retry")'])
+            second = len(rows)
+            (root / "dispatch.py").write_text("\n".join(rows), encoding="utf-8")
+            graph = build_graph(root)
+        def claim(line):
+            return {"text": "发送", "refs": [{"file": "dispatch.py", "line": line, "end": line}]}
+        requests = []
+        def capture(client, payload, validate):
+            requests.append(payload)
+            return {c["id"]: c for c in payload["claims"]}
+        integrate_overview(graph, {"claims": [claim(first), claim(second)]}, [], capture, None,
+                           2400, lambda sources: sources, None)
+        payload, = requests
+        by_id = {fact["claimId"]: fact for fact in payload["actionFacts"]}
+        self.assertEqual(set(by_id), {1, 2})
+        self.assertEqual(by_id[1]["action"]["line"], first)
+        self.assertEqual(by_id[2]["action"]["line"], second)
+        self.assertEqual({r["line"] for r in by_id[1]["refs"]}, {4, 5, first})
+        self.assertIn("urgent", by_id[1]["text"])
+        self.assertIn("regular", by_id[1]["text"])
+        self.assertNotIn("enabled", by_id[1]["text"])
+        self.assertIn("enabled", by_id[2]["text"])
+        self.assertNotIn("blocked", by_id[2]["text"])
+        for fact in by_id.values():
+            for ref in fact["refs"]:
+                self.assertTrue(any(src["file"] == ref["file"] and src["line"] <= ref["line"] <=
+                                    ref["end"] <= src["end"] for src in payload["sources"]))
+
     def test_multibatch_recheck_reuses_guide_and_checks_whole_function(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -72,7 +108,7 @@ class OverviewReviewTests(unittest.TestCase):
             self.assertEqual(guide["sourceOverview"]["fingerprint"], old["fingerprint"])
             self.assertEqual(guide["sourceOverview"]["overview"], old["overview"])
             self.assertTrue(guide["sourceOverview"]["reviewed"])
-            self.assertEqual(guide["promptVersion"], "12")
+            self.assertEqual(guide["promptVersion"], PROMPT_VERSION)
             self.assertEqual(guide["items"], old["items"])
             self.assertEqual(len(guide["overview"]["claims"]), len(old["overview"]["claims"]))
             for p in reader.requests:

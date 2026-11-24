@@ -1,6 +1,6 @@
 @echo off
 setlocal DisableDelayedExpansion
-set "repo=%~dp0examples\shop"
+set "repo=%~dp0how2trust"
 if not "%~1"=="" set "repo=%~f1"
 set "PYTHONPATH=%~dp0;%PYTHONPATH%"
 py -3 -c "import sys; sys.exit(sys.version_info < (3,10))" >nul 2>&1

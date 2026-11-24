@@ -17,7 +17,7 @@ from how2trust.review_html import render_report
 from how2trust.web import make_server
 
 
-SAMPLE = Path(__file__).resolve().parents[1] / "examples" / "delivery"
+SAMPLE = Path(__file__).resolve().parent / "fixtures" / "delivery"
 
 
 class DeliveryReviewTests(unittest.TestCase):

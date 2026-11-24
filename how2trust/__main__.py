@@ -42,18 +42,39 @@ def generate_with_progress(store):
     print("业务图生成完成", file=sys.stderr, flush=True)
 
 
+def _local_targets(graph, selectors):
+    targets = []
+    for value in selectors:
+        file, separator, symbol = value.replace("\\", "/").partition("::")
+        if file not in graph["files"]:
+            targets.append(value)  # A workbench node, group or relationship ID.
+        elif separator:
+            matches = [n["id"] for n in graph["nodes"] if n["file"] == file and n["qualname"] == symbol
+                       and n["kind"] in {"function", "class", "method"}]
+            if len(matches) != 1:
+                raise ValueError(f"未能唯一定位 {value}，请使用图中的节点 ID。")
+            targets.extend(matches)
+        else:
+            targets.append("module:" + file)
+    return targets
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="how2trust", description="从 Python 源码生成多层架构图，用可配置的模型解释业务职责并追溯到源码")
     commands = parser.add_subparsers(dest="action", required=True)
     serve = commands.add_parser("serve", help="启动交互查看器，支持批注和模型问答")
     export = commands.add_parser("export", help="导出独立离线 HTML")
+    evidence = commands.add_parser("check-evidence", help="对照当前源码，逐条复核旧版业务总览的引用")
+    evidence.add_argument("--previous", type=Path, required=True, help="含旧源码的架构 HTML 或图 JSON")
+    evidence.add_argument("--semantics", type=Path, help="与旧图匹配的讲解 JSON，可代替内嵌讲解")
+    evidence.add_argument("--json", type=Path, help="保存含新旧源码片段和行号的复核报告")
     wizard = commands.add_parser("review-gui", help="打开本机交付验收向导")
     wizard.add_argument("repository", type=Path, nargs="?", help="预选的交付目录")
     review = commands.add_parser("review", help="对照开工要求和基线验收本次交付")
     draft = commands.add_parser("draft", help="根据原始需求起草业务验收场景，供用户核定")
     draft.add_argument("--spec", required=True, type=Path, help="需求原文（纯文本或 Markdown）")
     draft.add_argument("-o", "--output", type=Path, required=True, help="待审阅的 JSON 清单")
-    for cmd in (serve, export, review):
+    for cmd in (serve, export, review, evidence):
         cmd.add_argument("repository", type=Path, help="要分析的 Python 仓库目录")
     baseline = review.add_mutually_exclusive_group(required=True)
     baseline.add_argument("--base", help="开工前的 Git 提交或标签")
@@ -66,6 +87,8 @@ def main(argv=None):
     serve.add_argument("--review", type=Path, help="加载此版本的交付验收报告 JSON")
     export.add_argument("-o", "--output", type=Path, required=True, help="输出 .html 文件")
     export.add_argument("--json", type=Path, help="同时写入包含证据与源码的图 JSON")
+    export.add_argument("--select", action="append", metavar="选区", help="生成局部业务图，可重复指定 文件.py、文件.py::限定名 或图元素 ID")
+    export.add_argument("--include-neighbors", action="store_true", help="为 --select 补入一跳直接调用与入口绑定证据")
     serve.add_argument("--port", type=int, default=8765, help="本地端口，0 表示自动分配")
     serve.add_argument("--open", action="store_true", help="在默认浏览器打开查看器")
     serve.add_argument("--db", type=Path, help="批注和会话的 SQLite 文件")
@@ -82,6 +105,32 @@ def main(argv=None):
         cmd.add_argument("--protocol", choices=("openai", "anthropic"), help="API 请求协议")
     args = parser.parse_args(argv)
     try:
+        if args.action == "check-evidence":
+            from .claim_drift import STATUS_LABELS, compare_claim_evidence, read_previous_graph
+
+            if args.json:
+                output = args.json.resolve()
+                inputs = {p.resolve() for p in (args.previous, args.semantics) if p}
+                if (args.json.suffix.lower() != ".json" or output in inputs or
+                        (output.is_relative_to(args.repository.resolve()) and output.exists()
+                         and existing_export(output) != "claim-drift")):
+                    raise ValueError("请选择独立的 .json 报告路径，保留原始文件。")
+            previous = read_previous_graph(args.previous.read_text(encoding="utf-8-sig"))
+            guide = json.loads(args.semantics.read_text(encoding="utf-8-sig")) if args.semantics else None
+            report = compare_claim_evidence(previous, build_graph(args.repository), guide)
+            print("旧版业务总览的源码引用复核")
+            print(" · ".join(f"{label} {report['counts'][key]}" for key, label in STATUS_LABELS.items()))
+            for claim in report["claims"]:
+                print(f"\n{claim['id']}. [{STATUS_LABELS[claim['status']]}] {claim['text']}")
+                for pair in claim["refs"]:
+                    locations = [f"{r['file']} L{r['line']}–{r['end']}" if r else "未定位"
+                                 for r in (pair["old"], pair["new"])]
+                    print(f"  {' → '.join(locations)}  {pair['reason']}")
+            if args.json:
+                args.json.parent.mkdir(parents=True, exist_ok=True)
+                args.json.write_bytes(canonical(report).encode("utf-8"))
+                print(args.json.resolve())
+            return 0
         if args.action == "review-gui":
             from .review_gui import launch
             return launch(args.repository)
@@ -111,7 +160,12 @@ def main(argv=None):
         config_path = args.llm_config or (None if options else os.getenv("HOW2TRUST_LLM_CONFIG"))
         state_dir = Path(os.getenv("LOCALAPPDATA") or os.getenv("XDG_DATA_HOME") or Path.home() / ".local/share")
         page_settings = state_dir / "how2trust" / "workbench-models.json"
-        replay_or_static = args.action == "export" and not args.with_semantics
+        if args.action == "export":
+            if args.include_neighbors and not args.select:
+                raise ValueError("--include-neighbors 需要用 --select 指定局部范围。")
+            if args.select and args.requirements:
+                raise ValueError("选区解读只读取静态关系与相关源码，请去掉 --requirements。")
+        replay_or_static = args.action == "export" and not (args.with_semantics or args.select)
         stage_config = {stage: {} for stage in ("semantics", "chat")} if replay_or_static else profiles(config_path, options)
         if args.action == "serve" and not config_path and not options and page_settings.is_file():
             stage_config.update(json.loads(page_settings.read_text(encoding="utf-8")))
@@ -141,7 +195,7 @@ def main(argv=None):
         if args.semantics and args.semantics.suffix.lower() != ".json":
             raise ValueError("--semantics 需要 .json 文件")
         store = SemanticStore(graph, ModelClient(stage_config["semantics"]), requirements,
-                              state_dir / "how2trust" / "semantics", args.semantics)
+                              state_dir / "how2trust" / "semantics", args.semantics, repository=args.repository)
         if args.action == "export":
             if args.requirements and not (args.with_semantics or args.semantics):
                 raise ValueError("从需求生成讲解请加 --with-semantics；离线重放只需 --semantics。")
@@ -156,7 +210,15 @@ def main(argv=None):
                 if (output in inputs or path.suffix.lower() in {".py", ".ini"} or
                         (output.is_relative_to(repository) and output.exists() and existing_export(output) != "graph")):
                     raise ValueError(f"请选择输出文档路径，避免覆盖源码或配置：{path}")
-            if args.with_semantics:
+            if args.select:
+                from .local_export import local_export_graph
+                if args.semantics and not store.load():
+                    raise ValueError("请用 --semantics 指定已有的整仓讲解，或省略该选项直接从静态图选择。")
+                targets = _local_targets(graph, args.select)
+                print("正在生成选区业务图…", file=sys.stderr, flush=True)
+                view = store.generate_local(targets, args.include_neighbors)
+                graph = local_export_graph(graph, view)
+            elif args.with_semantics:
                 generate_with_progress(store)
             elif args.semantics and not store.load():
                 raise ValueError("指定的业务讲解不存在。首次生成请加 --with-semantics。")
@@ -174,6 +236,7 @@ def main(argv=None):
             generate_with_progress(store)
         else:
             store.load()
+        store.load_local_views()
         db = args.db or state_dir / "how2trust" / "discussions.sqlite3"
         db.parent.mkdir(parents=True, exist_ok=True)
         discussion = Discussion(db, graph, stage_config["chat"], review=report)

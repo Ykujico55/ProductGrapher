@@ -3,12 +3,16 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 import re
 
+from .overview_facts import overview_facts
 from .project import canonical
+from .semantic_evidence import action_fact_row
 
 
 INSTRUCTIONS = """你在审校跨批选出的产品架构总览。给定结论是待核对的初稿，sources 是唯一行为证据。
 为每个原 id 返回一条经过校对、简短且可单独阅读的中文结论。完整实现优先于初稿和命名。
 nodeReadings 列出每条结论所引用函数的局部讲解及其行号，用来找反例。逐项对照 sources。
+actionFacts 按结论编号和动作位置列出静态条件。分别核对每个调用点的提前退出、进入该分支的条件和实参取值。
+同一方法由不同入口调用时，各自说明何时触发。决定参数值的条件只能用来说明取值。回到 refs 对应源码核实措辞。
 入口讲解可能概括了成功路径：检查被调方及上下文管理器的 raise、打开/写回失败和异常传播。
 只有调用正常返回且结果满足条件时，调用方才执行后面的打印、写入或退出。区分返回假值和抛出异常，检查是否有人捕获。
 若不同输出格式、模式或选项走不同分支，写明哪个分支跳过、保留或转换数据。
@@ -51,6 +55,11 @@ def spans_control_paths(graph, overview):
 
 
 def review_context(graph, claims, items, limit):
+    sources, readings, _ = _review_context(graph, claims, items, limit, {})
+    return sources, readings
+
+
+def _review_context(graph, claims, items, limit, facts_by_claim):
     files = {name: source.splitlines() for name, source in graph["files"].items()}
     nodes = {n["id"]: n for n in graph["nodes"]}
     functions = defaultdict(list)
@@ -66,8 +75,19 @@ def review_context(graph, claims, items, limit):
         if required or size + cost <= limit:
             selected[file].update(missing)
             size += cost
-            return True
-        return False
+
+    def add_record(row):
+        nonlocal size
+        pending = defaultdict(set)
+        for r in row["refs"]:
+            pending[r["file"]].update(i for i in range(r["line"], r["end"] + 1) if i not in selected[r["file"]])
+        cost = len(canonical(row)) + sum(len(files[file][i - 1]) + 12 for file, rows in pending.items() for i in rows)
+        if size + cost > limit:
+            return False
+        for file, rows in pending.items():
+            selected[file].update(rows)
+        size += cost
+        return True
 
     owners = {}
     claim_ids = defaultdict(set)
@@ -83,6 +103,18 @@ def review_context(graph, claims, items, limit):
             for owner in cited_owners:
                 owners[owner["id"]] = owner
                 claim_ids[owner["id"]].add(claim["id"])
+    # Reserve short, exact evidence spans before trying whole functions. A
+    # rejection several pages above a call can otherwise fall outside the budget.
+    actions = []
+    for claim in claims:
+        for fact in facts_by_claim.get(claim["id"], ()):
+            action = fact["action"]
+            if not any(r["file"] == action["file"] and r["line"] <= action["end"]
+                       and action["line"] <= r["end"] for r in claim["refs"]):
+                continue
+            row = {"claimId": claim["id"], **action_fact_row(fact)}
+            if add_record(row):
+                actions.append(row)
     # A command's reading can be attached to its registration rather than to
     # the function. Shared handlers need an actual citation of the registration
     # to select route-specific details.
@@ -107,14 +139,8 @@ def review_context(graph, claims, items, limit):
         if not item:
             continue
         reading = {"claimIds": sorted(ids), "nodeId": key, "text": item["text"], "refs": item["refs"]}
-        cost = len(canonical(reading))
-        if size + cost > limit:
-            continue
-        size += cost
-        if all(add(r["file"], r["line"], r["end"]) for r in item["refs"]):
+        if add_record(reading):
             readings.append(reading)
-        else:
-            size -= cost
     # Give original functions first use of the context so sibling branches and
     # statements outside a try/except boundary remain visible.
     for n in owners.values():
@@ -140,16 +166,17 @@ def review_context(graph, claims, items, limit):
             blocks[-1]["rows"].append(f"{i} | {files[file][i - 1]}")
     for block in blocks:
         block["text"] = "\n".join(block.pop("rows"))
-    return blocks, readings
+    return blocks, readings, actions
 
 
 def integrate_overview(graph, old, items, ask, client, limit, ranges, explanation):
     grouped = defaultdict(list)
     by_node = {item["nodeId"]: item for item in items}
+    facts_by_claim = dict(enumerate(overview_facts(graph, {"overview": old}), 1))
     for i, claim in enumerate(old["claims"], 1):
         grouped[claim["refs"][0]["file"]].append({"id": i, **claim})
     def review(claims):
-        sources, readings = review_context(graph, claims, by_node, limit)
+        sources, readings, actions = _review_context(graph, claims, by_node, limit, facts_by_claim)
         evidence = ranges(sources)
         original = {c["id"]: c for c in claims}
         def read(data):
@@ -170,7 +197,8 @@ def integrate_overview(graph, old, items, ask, client, limit, ranges, explanatio
             if out.keys() != original.keys():
                 raise ValueError("总览复核缺少结论 " + str(sorted(original.keys() - out.keys())))
             return out
-        return ask(client, {"task": "review_overview", "claims": claims, "sources": sources, "nodeReadings": readings}, read)
+        return ask(client, {"task": "review_overview", "claims": claims, "sources": sources,
+                            "nodeReadings": readings, "actionFacts": actions}, read)
     with ThreadPoolExecutor(max_workers=3) as pool:
         results = {i: c for part in pool.map(review, grouped.values()) for i, c in part.items()}
     return [results[i] for i in sorted(results)]

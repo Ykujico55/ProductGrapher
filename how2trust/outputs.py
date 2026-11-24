@@ -3,10 +3,10 @@
 import json
 
 
-def export_kind(text):
+def export_data(text):
     source = text.lstrip()
     if source.startswith("{"):
-        if '"how2trust.review.v1"' not in source and '"snapshot"' not in source:
+        if not any(marker in source for marker in ('"snapshot"', '"how2trust.review.v1"', '"how2trust.claim-drift.v1"')):
             return None
         payload = source
     elif source.startswith("<!doctype html>"):
@@ -27,14 +27,20 @@ def export_kind(text):
     else:
         return None
     try:
-        data = json.loads(payload)
+        return json.loads(payload)
     except (ValueError, RecursionError):
         return None
+
+
+def export_kind(text):
+    data = export_data(text)
     if isinstance(data, dict):
         if data.get("schema") == "how2trust.semantics.v1" and {"snapshot", "overview", "items", "fingerprint"} <= data.keys():
             return "semantics"
         if data.get("schema") == "how2trust.review.v1" and "changes" in data:
             return "review"
+        if data.get("schema") == "how2trust.claim-drift.v1" and {"previousSnapshot", "currentSnapshot", "claims"} <= data.keys():
+            return "claim-drift"
         if data.get("schema") == 1 and {"snapshot", "tree", "nodes", "edges", "files"} <= data.keys():
             return "graph"
     return None

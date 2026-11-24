@@ -35,6 +35,12 @@ for n in g["nodes"]:
 a = {"promptVersion": "8", "provider": "fixture", "model": "fixture", "items": items,
      "groups": capability_groups(g, items), "overview": {"claims": [{"text": "提交发货。", "refs":items[0]["refs"]}]},
      "coverage": {"explained": len(items), "eligible": len(g["nodes"])}}
+members = {n["label"]: n for n in g["nodes"] if n["kind"] == "function"}
+a["groupEvidence"] = {"提交发货": {
+    "origins": [{"label": label, "nodeIds": [members[name]["id"]]} for label, name in
+                [("提交请求", "submit"), ("包装货物", "pack")]],
+    "reason": {"text": "提交时在满足发货条件后执行包装。",
+               "refs": [{key: members[name][key] for key in ("file", "line", "end")} for name in ("submit", "pack")]}}}
 g.update(semantics=a, collaboration=collaboration_graph(g, a))
 (out/"page.html").write_bytes(standalone(g))
 (out/"graph.json").write_text(json.dumps(g), "utf-8")
@@ -95,6 +101,13 @@ async function verifyModuleDrilldown(page, graph) {
 
   await card(source.id).click();
   assert.equal(await page.locator("#canvas-name").innerText(), "模块内部关系图");
+  const evidence = page.locator("#inspect-content").getByText("查看分组依据", {exact:true});
+  await evidence.click();
+  assert.ok(await page.getByText("提交时在满足发货条件后执行包装。", {exact:true}).isVisible());
+  const packaging = page.locator("#inspect-content details").filter({
+    has: page.locator("summary", {hasText:"包装货物 · 1 个源码成员"})}).last();
+  await packaging.locator("summary").click();
+  assert.match(await packaging.getByRole("button").innerText(), /pack.*packing.py/);
   assert.equal(await page.locator("#scope-name").innerText(), source.label);
   assert.equal(await page.locator('[data-view="collaboration"]').getAttribute("aria-pressed"), "true");
   const members = await drawing.locator(".graph-node").evaluateAll(cards => cards.map(c => c.dataset.key).sort());
@@ -103,6 +116,7 @@ async function verifyModuleDrilldown(page, graph) {
   const internalEdge = drawing.locator(`.graph-edge[data-key="${internal.id}"]`);
   await internalEdge.focus();
   await internalEdge.press("Enter");
+  assert.match(await page.locator("#inspect-content .module-site").innerText(), /ready/);
   const highlight = page.locator("#inspect-content .proof[open] .source-line.focus");
   assert.match(await highlight.first().innerText(), /pack\(\)/);
   assert.equal(await highlight.first().locator("b").textContent(), String(internal.line));
@@ -281,7 +295,9 @@ async function main() {
     let requests = 0;
     const staticGraph = JSON.parse(fs.readFileSync(path.join(temp, "static.json"), "utf8"));
     const guardLine = staticGraph.files["dispatch.py"].split("\n").findIndex(line => line.includes("if ready:")) + 1;
-    const facts = [[{text:"ready 成立时进入分支",file:"dispatch.py",line:guardLine,end:guardLine}]];
+    const guard = {text:"ready 成立时进入分支", file:"dispatch.py", line:guardLine, end:guardLine};
+    const facts = [[{action:{text:"调用 send", file:"dispatch.py", line:guardLine+2, end:guardLine+2},
+      conditions:[guard], valueChoices:[], uncoveredEvidence:[{...guard, role:"condition"}]}]];
     let release;
     const gate = new Promise(resolve => {release = resolve;});
     const state = {notes:[], threads:[], llm:{configured:false}, semanticLlm:{configured:true, model:"fixture"}};
@@ -315,10 +331,13 @@ async function main() {
     await page.locator('[data-view="product"]').click();
     assert.equal(requests, 1);
     assert.equal(await page.locator("#drawing .graph-node").count(), 3);
-    const branches = page.locator(".reading-claim .reading-citations");
+    const uncited = page.locator(".reading-claim > details").filter({has:page.getByText("结论引用未覆盖的源码依据（1）")});
+    await uncited.locator(":scope > summary").click();
+    assert.match(await uncited.innerText(), /执行条件.*ready/);
+    const branches = page.locator(".reading-claim > details").filter({has:page.getByText(/源码中的分支与筛选/)});
     await branches.locator("summary").first().click();
     assert.match(await branches.innerText(), /ready 成立时进入分支/);
-    await branches.locator(".text-btn").click();
+    await branches.locator(".text-btn").last().click();
     assert.match(await page.locator("#inspect-content > .proof[open]").innerText(), /if ready:/);
 
     // A browser panel can deny native fullscreen. The live viewer should still fill a narrow tab.

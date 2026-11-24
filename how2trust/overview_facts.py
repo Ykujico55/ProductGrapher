@@ -2,6 +2,7 @@
 
 import ast
 from collections import defaultdict
+from itertools import groupby
 
 from .collaboration import _CallConditions
 
@@ -9,14 +10,6 @@ from .collaboration import _CallConditions
 FUNCTION = (ast.FunctionDef, ast.AsyncFunctionDef)
 COMPREHENSION = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 EXIT = (ast.Return, ast.Raise, ast.Break, ast.Continue)
-
-
-class _OverviewConditions(_CallConditions):
-    def predicate(self, test, truth):
-        row = super().predicate(test, truth)
-        if truth and isinstance(test, ast.Subscript):
-            row["text"] += "（空字典或空列表不会进入此分支）"
-        return row
 
 
 def _filters(node, parent):
@@ -59,17 +52,24 @@ def _file_facts(path, source, call_sites):
     statements = {node.value for node in parent if isinstance(node, ast.Expr)
                   and isinstance(node.value, ast.Call) and node.value not in calls}
     filtered = {n for n in parent if isinstance(n, COMPREHENSION) and any(g.ifs for g in n.generators)}
-    watched = filtered | {n for n in parent if isinstance(n, EXIT)} | calls.keys() | statements
-    contexts = _OverviewConditions(path, tree, set(), watch=watched).contexts
+    assignments = {n for n in parent if isinstance(n, (ast.Assign, ast.AnnAssign)) and isinstance(n.value, ast.IfExp)}
+    watched = assignments | filtered | {n for n in parent if isinstance(n, EXIT)} | calls.keys() | statements
+    analysis = _CallConditions(path, tree, set(), watch=watched)
     result = []
-    for node, context in contexts.items():
+    for node, context in analysis.contexts.items():
         owner = scopes[node.lineno]
-        # Local guards/iterations are shown before the source action. A return
-        # from an earlier branch has its own row at its actual source position.
-        guards = [g for g in context if not g["text"].startswith("前方")]
+        if isinstance(node, ast.Call):
+            choices = analysis.call_arguments(node)
+        elif node in assignments or isinstance(node, ast.Return):
+            choices = analysis.value_choices([node.value])
+        else:
+            choices = []
         extend = node in filtered
         if extend:
             action = _filters(node, parent.get(node))
+        elif node in assignments:
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            action = "赋值给 " + "、".join(ast.unparse(target) for target in targets)
         elif node in calls:
             edges = calls[node]
             recursive = any(edge["source"] == edge["target"] for edge in edges)
@@ -80,15 +80,15 @@ def _file_facts(path, source, call_sites):
             if recursive and returned:
                 extend = True
                 action = f"递归调用 {ast.unparse(node.func)}，直接返回其结果；本层后续语句不会执行"
-            elif guards:
+            elif context or choices:
                 action = f"调用 {ast.unparse(node.func)}" + ("，直接返回其结果" if returned else "")
             else:
                 continue
         elif node in statements:
-            if not guards:
+            if not (context or choices):
                 continue
             action = "源码表达式 " + ast.unparse(node)
-        elif guards:
+        elif context or choices:
             if isinstance(node, ast.Return):
                 if node.value in calls:
                     continue
@@ -100,13 +100,47 @@ def _file_facts(path, source, call_sites):
                     "结束当前迭代" if isinstance(node, ast.Continue) else "离开当前循环")
         else:
             continue
-        # Use the call/filter line for source ordering. Include the closest
-        # guard in the clickable range, and name all lexical checks in the text.
+        # Keep earlier exits and assertions individually clickable, without stretching this
+        # action's source range across every intervening statement.
+        guards = [g for g in context if g.get("kind") not in {"priorExit", "assertion"}]
         start = min(guards[-1]["line"], node.lineno) if guards else node.lineno
-        text = "；".join([*(g["text"] for g in guards), action])
-        fact = {"file": path, "line": start, "end": node.end_lineno, "text": text}
+        text = "；".join([*(g["text"] for g in context), action, *(c["text"] for c in choices)])
+        fact = {"file": path, "line": start, "end": node.end_lineno, "text": text,
+                "conditions": context, "action": analysis.fact(action, node), "valueChoices": choices}
         result.append((owner, node.lineno, node.end_lineno, extend, fact))
     return scopes, result
+
+
+def _supporting_spans(fact):
+    for guard in fact["conditions"]:
+        if guard.get("kind") == "priorExit":
+            test = guard["predicate"]
+            truth = "真" if test["truth"] else "假"
+            yield "condition", test, f"{test['text']} 为{truth}时进入此前分支"
+            yield "exit", guard["exit"], guard["exit"]["text"]
+        else:
+            yield "condition", guard, guard["text"]
+    for choice in fact["valueChoices"]:
+        for key, label in (("test", "取值条件"), ("whenTrue", "为真时取"), ("whenFalse", "为假时取")):
+            part = choice[key]
+            yield "value", part, f"{label} {part['text']}"
+
+
+def _uncovered_evidence(fact, cited):
+    """Return only the uncited runs of lines in the action's local supporting evidence."""
+    missing = {}
+    for role, span, text in _supporting_spans(fact):
+        numbers = range(span["line"], span["end"] + 1)
+        for covered, group in groupby(numbers, key=cited.__contains__):
+            if covered:
+                continue
+            lines = list(group)
+            key = (span["file"], lines[0], lines[-1])
+            _, texts = missing.setdefault(key, (role, []))
+            if text not in texts:
+                texts.append(text)
+    return [{"role": role, "file": path, "line": start, "end": end, "text": "；".join(texts)}
+            for (path, start, end), (role, texts) in sorted(missing.items())]
 
 
 def overview_facts(graph, guide):
@@ -121,18 +155,22 @@ def overview_facts(graph, guide):
     indexed = {path: _file_facts(path, graph["files"][path], calls[path]) for path in files}
     result = []
     for claim in claims:
-        rows = {}
+        cited_by_file = defaultdict(set)
         for ref in claim["refs"]:
             path = ref["file"]
-            if path not in indexed:
-                continue
+            if path in indexed:
+                scopes, _ = indexed[path]
+                cited_by_file[path].update(range(len(scopes))[ref["line"]:ref["end"] + 1])
+        rows = {}
+        for path, cited in cited_by_file.items():
             scopes, facts = indexed[path]
-            start, end = ref["line"], ref["end"]
-            owners = {owner for owner in scopes[start:end + 1] if isinstance(owner, FUNCTION)}
+            owners = {scopes[n] for n in cited if isinstance(scopes[n], FUNCTION)}
             for owner, line, last, extend, fact in facts:
-                if not (start <= last and line <= end or extend and owner in owners):
+                cited_action = not cited.isdisjoint(range(line, last + 1))
+                if not (cited_action or extend and owner in owners):
                     continue
                 key = (path, fact["line"], line, fact["end"], fact["text"])
-                rows[key] = fact
+                missing = _uncovered_evidence(fact, cited) if cited_action else []
+                rows[key] = {**fact, "uncoveredEvidence": missing} if missing else fact
         result.append([rows[key] for key in sorted(rows)])
     return result

@@ -7,6 +7,7 @@ const path = require("node:path");
 const {spawn} = require("node:child_process");
 const {once} = require("node:events");
 const {createInterface} = require("node:readline");
+const {pathToFileURL} = require("node:url");
 const {chromium} = require(process.env.PLAYWRIGHT_PACKAGE || "playwright");
 
 function modelReply(body) {
@@ -14,18 +15,38 @@ function modelReply(body) {
   const payload = JSON.parse(body.messages.at(-1).content);
   if (payload.task === "verify") return JSON.stringify({claimReplacements: [], itemReplacements: []});
   if (payload.task === "domains") return JSON.stringify({domains: payload.groups.map(g => ({name: g.name, groupIds: [g.id]}))});
-  const items = payload.nodes.filter(n => n.kind === "function").map(n => ({
-    nodeId: n.id, title: n.label, text: n.label, aliases: [], capability: n.label,
+  const items = payload.nodes.filter(n => ["function", "entry"].includes(n.kind)).map(n => ({
+    nodeId: n.id, title: n.label, text: n.label, aliases: [], capability: n.label === "record" ? "记录任务" : "提交任务",
     refs: [{file: n.file, line: n.line, end: n.end}],
   }));
   return JSON.stringify({items, overview: {claims: [{text: "提交", refs: items[0].refs}]}});
+}
+
+async function checkBusinessLayers(page) {
+  const selector = page.getByRole("combobox", {name:"首页图层"});
+  const graph = page.locator("#drawing");
+  const card = name => graph.getByRole("button", {name, exact:true});
+  assert.equal(await selector.inputValue(), "all");
+  assert.ok(await card("提交任务").isVisible());
+  assert.ok(await card("记录任务").isVisible());
+  await selector.selectOption("internal");
+  assert.ok(await card("记录任务").isVisible());
+  assert.equal(await card("提交任务").count(), 0);
+  await card("记录任务").click();
+  assert.equal(await page.locator("#scope-name").innerText(), "记录任务");
+  await selector.selectOption("business");
+  assert.ok(await card("提交任务").isVisible());
+  assert.equal(await card("记录任务").count(), 0);
+  await selector.selectOption("source");
+  assert.ok(await card("源码模块").isVisible());
+  await selector.selectOption("all");
 }
 
 async function test() {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), "how2trust-model-settings-"));
   const repo = path.join(folder, "repo");
   fs.mkdirSync(repo);
-  fs.writeFileSync(path.join(repo, "job.py"), "def submit(): pass\n");
+  fs.writeFileSync(path.join(repo, "job.py"), 'def record(): return 1\ndef submit(): return record()\nif __name__ == "__main__":\n    submit()\n');
   const calls = [], secret = "temporary-test-credential";
   let releaseFirstRequest;
   const firstRequest = new Promise(resolve => {releaseFirstRequest = resolve;});
@@ -71,6 +92,12 @@ async function test() {
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     await page.goto(base);
+    await page.locator('[data-view="product"]').click();
+    const layers = page.getByRole("combobox", {name:"首页图层"});
+    await layers.selectOption("source");
+    assert.ok(await page.locator("#drawing").getByRole("button", {name:"源码模块",exact:true}).isVisible());
+    await layers.selectOption("business");
+    assert.equal(calls.length, 0);
     const button = page.getByRole("button", {name:"模型设置", exact:true});
     async function save() {
       await page.getByRole("button", {name:"保存并应用"}).click();
@@ -101,6 +128,15 @@ async function test() {
     await observer.close();
     await page.locator("#generate-semantics").waitFor({state:"hidden"});
     assert.equal((await (await page.request.get(base+"api/graph")).json()).semantics.model, "guide-fixture");
+    await checkBusinessLayers(page);
+    const callCount = calls.length;
+    const saved = path.join(folder, "workbench.html");
+    fs.writeFileSync(saved, await (await page.request.get(base+"export.html")).body());
+    const offline = await browser.newPage();
+    await offline.goto(pathToFileURL(saved).href);
+    await checkBusinessLayers(offline);
+    await offline.close();
+    assert.equal(calls.length, callCount);
     await button.click();
     await page.getByLabel("应用范围").selectOption("chat");
     await page.getByLabel("模型名", {exact:true}).fill("chat-fixture");
@@ -131,7 +167,10 @@ async function test() {
     for (const url of ["api/models", "api/state", "api/semantics/progress", "export.html"])
       assert.ok(!(await (await page.request.get(base+url)).text()).includes(secret));
     assert.ok(!fs.readFileSync(path.join(folder, "how2trust", "workbench-models.json"), "utf8").includes(secret));
+    const previousGraph = await (await page.request.get(base+"api/graph")).json();
+    const requestsBeforeRestart = calls.length;
     await stop();
+    fs.writeFileSync(path.join(repo, "test_job.py"), "def test_record(): pass\n");
     const restarted = await start();
     const prefs = await (await page.request.get(restarted+"api/models")).json();
     assert.equal(prefs.chat.model, "chat-fixture");
@@ -140,6 +179,14 @@ async function test() {
     assert.equal((await (await page.request.get(restarted+"api/state")).json()).llm.configured, false);
     assert.equal(prefs.semantics.model, "second-guide");
     assert.equal(prefs.semantics.api_key_env, "MODEL_SETTINGS_FIXTURE");
+    await page.goto(restarted + "#view=business");
+    await page.locator(".generate-in-canvas").click();
+    await page.locator(".reading-claim").first().waitFor();
+    const updatedGraph = await (await page.request.get(restarted+"api/graph")).json();
+    assert.notEqual(updatedGraph.snapshot, previousGraph.snapshot);
+    assert.equal(updatedGraph.semantics.snapshot, updatedGraph.snapshot);
+    assert.equal((await (await page.request.get(restarted+"api/semantics/progress")).json()).cached, 1);
+    assert.equal(calls.length, requestsBeforeRestart);
     assert.deepEqual(errors, []);
     console.log("Model settings, real batch progress, reconnect, error details, retry, chat and restart passed.");
   } finally {

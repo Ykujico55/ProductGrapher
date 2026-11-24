@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f8f6ef">
+<title>How2Trust · 从源码看清 coding agent 交付的产品</title>
+<style>
+:root{color-scheme:light;--paper:#f8f6ef;--ink:#172e2c;--green:#10594c;--muted:#4c645e;--line:#cad3c9;--soft:#e7eee5;--ochre:#925327;--orange:#f8e8d8;--night:#133e38;--sans:"Source Sans 3","Microsoft YaHei UI","Microsoft YaHei","PingFang SC",system-ui,sans-serif;--mono:"IBM Plex Mono",Consolas,"Microsoft YaHei",monospace}
+*{box-sizing:border-box}html{font-family:var(--sans);color:var(--ink);background:var(--paper);scrollbar-gutter:stable}body{margin:0}button,a{font:inherit}button{color:inherit;cursor:pointer}a{color:var(--green);text-underline-offset:.23em;text-decoration-thickness:1px}a:hover{color:var(--ochre)}button:focus-visible,a:focus-visible{outline:3px solid #b65b24;outline-offset:4px}button:disabled{opacity:.35;cursor:default}.top,.foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 clamp(20px,5vw,92px)}.top{height:58px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:12px;font-weight:750;letter-spacing:-.02em}.mark{display:inline-flex;gap:3px;align-items:flex-end;height:20px}.mark i{display:block;width:5px;background:var(--green);height:12px}.mark i:nth-child(2){height:20px}.mark i:last-child{height:15px;background:#b86b3b}.mastnote{color:var(--muted);font-size:13px;padding-left:13px;border-left:1px solid var(--line);font-weight:500;letter-spacing:.08em}.tools,.pager,.refs,.tabs{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.tool,.navbtn{background:transparent;border:1px solid var(--line);border-radius:5px;padding:7px 13px;font-size:14px}.tool:hover,.navbtn:hover:enabled{border-color:var(--green);background:var(--soft)}.tool.flat{border-color:transparent}
+main{max-width:1620px;margin:auto}.slide{padding:clamp(30px,5vh,72px) clamp(22px,6.3vw,116px) 32px;min-height:calc(100svh - 115px);display:flex;flex-direction:column;justify-content:center;gap:clamp(15px,2.7vh,36px)}.slide[hidden]{display:none}.folio{font-family:var(--mono);color:var(--green);font-size:14px;letter-spacing:.07em;font-weight:650}.folio i{font-style:normal;color:#7c8271;margin:0 10px}.intro{display:grid;gap:9px}h1,h2,h3,h4,p,figure,ol,ul,dl,dd{margin:0}h1,h2,h3{font-weight:730;letter-spacing:-.035em}h2{font-size:clamp(31px,3.35vw,58px);line-height:1.22;text-wrap:balance}h3{font-size:clamp(21px,1.7vw,30px);line-height:1.35}p,dd,td{line-height:1.58}p{font-size:clamp(16px,1.28vw,23px)}.lead{color:var(--muted);max-width:65em}.bodytext{color:var(--muted)}.split{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,4.4vw,80px);align-items:center}.paperbox{border:1px solid var(--line);border-radius:9px;background:#fdfcf7}.foot{min-height:57px;border-top:1px solid var(--line);position:relative;background:var(--paper)}.progress{position:absolute;top:-2px;left:0;height:3px;background:var(--green);width:0}.position{font-family:var(--mono);font-size:13px;color:var(--muted)}.navbtn.next{background:var(--green);color:white;border-color:var(--green)}.navbtn.next:hover:enabled{background:#0c493f;color:white}.refs{gap:8px 18px;color:var(--muted);font-size:clamp(13px,.96vw,17px)}.refs a{text-decoration-color:#8baca0}.note{font-size:clamp(14px,1.03vw,18px);color:var(--muted);line-height:1.5}.stripe{border-left:4px solid var(--green);padding:7px 0 7px 17px}.eyeline{font-size:15px;color:var(--green);font-weight:680}.hero{grid-template-columns:1.12fr 1fr}.hero h1{font-family:"Inter",var(--sans);font-size:clamp(56px,6.6vw,114px);line-height:1;letter-spacing:-.075em}.hero h1 span{color:var(--green)}.hero h2{font-size:clamp(28px,2.8vw,49px);margin:20px 0 18px;line-height:1.35}.hero .lead{max-width:30em}.cover-figure{background:var(--night);color:#fff;border-radius:12px;padding:clamp(20px,2.6vw,46px);overflow:hidden;box-shadow:6px 6px 0 #dfe6dc}.cover-figure figcaption{color:#c1d9ce;font-size:15px}.fig-entry{margin:24px 0 0;padding:14px 18px;text-align:center;border:1px solid #87aa9e;color:#f6fbf6;font-size:clamp(19px,1.65vw,28px);font-weight:650}.fork{width:50%;height:23px;margin:auto;border-bottom:1px solid #85b3a4;position:relative}.fork:before{content:"";position:absolute;left:50%;height:100%;border-left:1px solid #85b3a4}.branches{display:grid;grid-template-columns:1fr 1fr;gap:13px}.branch{position:relative;padding-top:16px;text-align:center}.branch:before{content:"";position:absolute;top:0;left:50%;height:16px;border-left:1px solid #85b3a4}.branch b{display:block;background:#e1eee1;color:#164538;border-radius:3px;padding:12px 6px;font-size:clamp(16px,1.4vw,23px)}.branch:last-child b{background:#f3dfc8;color:#624321}.branch small{display:block;margin:9px 0 0;color:#d2dfd7;font-size:15px}.case-link{display:inline-block;margin-top:22px;color:#fff;text-decoration-color:#88b2a0;font-size:15px}.case-link:hover{color:#f2c295}
+.flow{display:grid;grid-template-columns:repeat(3,1fr);border-block:1px solid var(--line)}.flow article{padding:24px clamp(12px,2vw,33px);border-right:1px solid var(--line)}.flow article:first-child{padding-left:0}.flow article:last-child{border:0;padding-right:0}.flow h3{margin:5px 0 10px}.flow p{color:var(--muted)}.eyeline code,.code{font-family:var(--mono)}.compare{border-collapse:collapse;width:100%;font-size:clamp(15px,1.18vw,21px)}.compare thead{color:var(--muted);font-size:.91em;text-align:left}.compare th,.compare td{padding:clamp(9px,1.45vh,18px) 16px;vertical-align:top;border-bottom:1px solid var(--line)}.compare th:first-child,.compare td:first-child{padding-left:0}.compare th:last-child,.compare td:last-child{padding-right:0}.compare tbody th{text-align:left;font-size:1.06em;width:19%}.compare td:nth-child(2){width:36%}.compare tbody small{display:block;font-weight:450;color:var(--muted);font-size:.76em;margin-top:4px}.compare b{color:var(--green)}
+.cachegrid{display:grid;grid-template-columns:1fr 1.13fr;gap:clamp(24px,3.5vw,62px);align-items:start}.steps{padding-left:1.5em;display:grid;gap:16px}.steps li{padding-left:7px;font-size:clamp(16px,1.25vw,22px);line-height:1.5}.steps li::marker{color:var(--green);font-family:var(--mono);font-weight:bold}.steps strong{display:block}.steps span{color:var(--muted)}.panel{padding:clamp(16px,1.9vw,30px)}.tabs{gap:6px;margin-bottom:15px}.tabs button,.choices button{background:transparent;border:1px solid var(--line);border-radius:4px;padding:7px 11px;font-size:clamp(14px,1.05vw,18px)}.tabs button[aria-pressed=true],.choices button[aria-pressed=true]{color:white;background:var(--green);border-color:var(--green)}.batchrow{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--line);padding:9px 0;font-size:clamp(15px,1.2vw,20px)}.batchrow code{font-family:var(--mono);font-size:.92em}.state{font-size:.82em;font-weight:650;border-radius:3px;padding:2px 8px;background:var(--soft);color:var(--green)}.state.refresh{background:var(--orange);color:#77411e}.panel .note{margin-top:10px}
+.measure{display:grid;grid-template-columns:1.08fr .92fr;gap:clamp(25px,4vw,75px);align-items:center}.chart{background:var(--night);color:white;border-radius:10px;padding:clamp(22px,2.6vw,44px)}.chart figcaption{font-size:clamp(17px,1.4vw,24px);margin-bottom:19px}.bar-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:clamp(15px,1.15vw,20px)}.bar-top b{font-family:var(--mono);font-size:1.32em}.track{height:12px;background:#31574d;margin:6px 0 15px;border-radius:2px;overflow:hidden}.track span{display:block;height:100%;background:#a6c5af}.track .warm{width:81.54%;background:#edbb86}.chart small{color:#d2e2d7;font-size:14px}.big{font-family:"Inter",var(--sans);color:var(--green);font-size:clamp(49px,5.6vw,92px);font-weight:730;line-height:1.05;letter-spacing:-.065em}.numbers h3{margin:7px 0 12px}.numbers p+p{margin-top:9px}.choices{display:flex;gap:7px;flex-wrap:wrap}.casegrid{display:grid;grid-template-columns:.86fr 1.14fr;gap:clamp(20px,3vw,52px);align-items:center}.reading{display:grid;gap:15px}.extract{border-radius:8px;background:#153b36;color:#eff6ef;padding:clamp(14px,1.6vw,25px);overflow:hidden}.extract figcaption{color:#c8ddd0;font:clamp(13px,1.01vw,17px) var(--mono);margin-bottom:12px}.codebox{font:clamp(14px,1.12vw,20px)/1.7 var(--mono);overflow:auto}.line{display:block;white-space:pre;border-left:3px solid transparent;padding:0 8px}.line i{font-style:normal;color:#b6cabc;user-select:none}.line.on{background:#315846;border-left-color:#efbe8d;color:white}.case-result{min-height:4em}.codebox .omitted{color:#b7cec0}.results{display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,3.8vw,70px)}.result{border-top:2px solid var(--green);padding-top:14px}.result .metric{color:var(--green);font-size:clamp(30px,3.35vw,55px);letter-spacing:-.05em;font-weight:700}.result p{margin-top:6px}.result h3{margin:4px 0}.limits{display:grid;gap:0}.limit{display:grid;grid-template-columns:.65fr 1.25fr 1fr;gap:clamp(14px,2.4vw,42px);border-top:1px solid var(--line);padding:14px 0;align-items:baseline}.limit h3{font-size:clamp(18px,1.45vw,26px)}.limit p{font-size:clamp(15px,1.17vw,21px)}.closing{background:var(--night);color:white;padding:14px clamp(16px,2vw,32px);border-radius:6px;line-height:1.5}.sr{position:absolute;height:1px;width:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}dialog{width:min(540px,94vw);max-height:85vh;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);padding:24px}dialog::backdrop{background:#142f2a80}dialog header{display:flex;justify-content:space-between;align-items:center}dialog ol{padding-left:1.7em;margin-top:18px}dialog li{padding:7px 0;color:var(--muted)}dialog a{display:block}
+@media(min-width:900px) and (max-height:790px){.slide{padding-top:24px;padding-bottom:22px;gap:16px}.top{height:48px}.foot{min-height:48px}.slide{min-height:calc(100svh - 96px)}.flow article{padding-block:17px}.compare th,.compare td{padding-block:8px}.limit{padding-block:10px}.steps{gap:10px}}
+@media(max-width:850px){.slide{justify-content:flex-start;padding:30px 5vw;gap:20px}.split,.cachegrid,.measure,.casegrid{grid-template-columns:1fr;gap:20px}.hero .lead{max-width:none}.hero{gap:24px}.cover-figure{max-width:570px;width:100%}.flow{grid-template-columns:1fr}.flow article,.flow article:first-child,.flow article:last-child{padding:12px 0;border:0;border-bottom:1px solid var(--line)}.flow article:last-child{border:0}.flow h3{margin:2px 0 4px}.results{gap:20px}.top,.foot{padding-inline:5vw}.numbers h3{margin:5px 0}.limit{grid-template-columns:.58fr 1fr}.limit p:last-child{grid-column:2}.foot{min-height:56px}.progress{transition:width .18s}}
+@media(max-width:580px){.mastnote{display:none}.tools{gap:2px}.tool{padding:7px 9px}.results{grid-template-columns:1fr}.compare,.compare tbody,.compare tr,.compare td,.compare tbody th{display:block;width:100%!important}.compare thead{position:absolute;clip-path:inset(50%);height:1px;overflow:hidden}.compare tr{border-top:1px solid var(--line);padding:10px 0}.compare th,.compare td{border:0;padding:3px 0}.compare td:last-child:before{content:"本项目　";font-weight:bold;color:var(--green)}.compare tbody small{display:inline;margin-left:8px}.limit{display:block}.limit p{margin-top:4px}.foot{gap:4px}.pager{gap:4px}.navbtn{padding:7px 9px}.folio{font-size:12px}.position{font-size:12px}.hero h1{font-size:58px}.hero h2{font-size:28px}.refs{row-gap:10px}.codebox{font-size:13px}}
+@media print{@page{size:A4 landscape;margin:12mm}html,body{background:white;scrollbar-gutter:auto}.top,.foot,dialog,.tabs,.choices,.case-link{display:none!important}.slide,.slide[hidden]{display:flex!important;min-height:0;height:auto;padding:2mm 1mm;break-after:page;break-inside:avoid;gap:4mm}.slide:last-of-type{break-after:auto}main{max-width:none}.split,.cachegrid,.measure,.casegrid,.results{display:grid;grid-template-columns:1fr 1fr}.flow{display:grid;grid-template-columns:repeat(3,1fr)}.compare{display:table}.compare thead{position:static;clip-path:none}.compare tbody{display:table-row-group}.compare tr{display:table-row}.compare td,.compare tbody th{display:table-cell;width:auto!important}.compare td:last-child:before{content:none}h2{font-size:28pt}.hero h1{font-size:52pt}.hero h2{font-size:24pt}p,td,.compare,.steps li,.batchrow{font-size:12pt}.cover-figure,.chart,.extract,.closing,.state,.line.on,.track{print-color-adjust:exact;-webkit-print-color-adjust:exact}.slide .refs,.note{font-size:9.7pt}.limit{display:grid;grid-template-columns:.65fr 1.25fr 1fr}.limit p:last-child{grid-column:auto}}
+</style>
+</head>
+<body>
+<header class="top"><div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>How2Trust <span class="mastnote">软件工程项目答辩</span></div><nav class="tools" aria-label="演示工具"><button type="button" class="tool flat" id="toc-open">目录</button><button type="button" class="tool" id="fullscreen">全屏</button></nav></header>
+<main>
+<section class="slide" id="motivation" data-name="研究动机">
+  <div class="folio">01 <i>/</i> 研究动机</div>
+  <div class="split hero">
+    <div><h1>How<span>2</span>Trust</h1><h2>从源码看清 coding agent<br>交付的产品</h2><p class="lead">在连续迭代中，agent 会引入使用者不熟悉的技术或设计。程序已经能运行，但现在做出来的产品是什么样的？它和我原本想做的产品，差在哪里？</p></div>
+    <figure class="cover-figure"><figcaption>订单履约案例 · 已通过退货校验</figcaption><div class="fig-entry">处理退货</div><div class="fork"></div><div class="branches"><div class="branch"><b>可售退货</b><small>补回可用库存<br>触发重试</small></div><div class="branch"><b>损坏退货</b><small>增加损坏库存<br>跳过该次重试</small></div></div><a class="case-link" href="#evidence">查看决定重试的两行源码 ↗</a></figure>
+  </div>
+  <p class="stripe">工作台从当前 Python 源码生成业务架构图。使用者沿图核对实现，发现与原意的偏差，把修改意见带回下一轮开发。</p>
+</section>
+<section class="slide" id="workbench" data-name="工作台与三种视图">
+  <div class="intro"><div class="folio">02 <i>/</i> 工作台与三种视图</div><h2>同一份源码，回答三个层次的问题</h2><p class="lead">静态分析从 Python 抽象语法树和配置中提取声明、入口和关系。可配置的本地或云端模型据此命名业务职责、撰写带引用的讲解。</p></div>
+  <div class="flow"><article><span class="eyeline">整仓结构图</span><h3>交付了哪些代码？</h3><p>展开仓库层级，从入口定位到模块、类和方法。区分生产代码、测试与示例，避免把测试夹具读成产品入口。</p></article><article><span class="eyeline">生产业务图</span><h3>形成了哪些业务能力？</h3><p>按职责归并生产代码，查看每组包含的实现和归并理由。既可生成全仓业务图，也可只解释圈选范围及其直接邻居。</p></article><article><span class="eyeline">模块协作图</span><h3>这些能力怎样协作？</h3><p>点模块展开内部结构、类关系和多级方法调用。点箭头检查每个已识别调用位置的分支、提前退出及对应源码。</p></article></div>
+  <p class="stripe">在图上圈选一段流程，批注疑问，或向模型连续追问。同一快照可以回放已保存的讲解，供下一位审阅者核对。</p>
+  <div class="refs"><a href="../examples/python-dotenv-1.1.1/workbench.html" target="_blank" rel="noopener">打开真实工作台示例 ↗</a><a href="从源码仓库生成架构图.html" target="_blank" rel="noopener">操作说明 ↗</a></div>
+</section>
+<section class="slide" id="prior" data-name="前人工作与项目贡献">
+  <div class="intro"><div class="folio">03 <i>/</i> 前人工作与项目贡献</div><h2>已有方法如何服务于持续审阅？</h2><p class="lead">已有研究能恢复调用图和架构组件。我们进一步关注读者怎样核查一条业务解释，以及代码改动后哪些解释需要重新生成。</p></div>
+  <table class="compare"><thead><tr><th scope="col">前人工作</th><th scope="col">已有方法或研究工件</th><th scope="col">How2Trust 的借鉴与实现</th></tr></thead><tbody>
+    <tr><th scope="row"><a href="https://arxiv.org/abs/2103.00587" target="_blank" rel="noopener">PyCG ↗</a><small>Salis 等 · ICSE 2021</small></th><td>通过赋值关系推断 Python 调用目标，发布带参考调用图的微型用例。</td><td>用其基准检验自己的解析器，并在交互图中进一步呈现<b>每个调用点的条件与例外</b>。</td></tr>
+    <tr><th scope="row"><a href="https://github.com/xjtu-enre/TSE2025SemArc" target="_blank" rel="noopener">SemArc ↗</a><small>Zhao 等 · IEEE TSE</small></th><td>结合结构依赖和语义信息恢复架构组件，并提供专家文件分组。</td><td>为业务归并保留成员与理由，<b>区分共用方法和共同职责</b>。专家文件分组可作外部参照。</td></tr>
+    <tr><th scope="row"><a href="https://arxiv.org/abs/2601.13007" target="_blank" rel="noopener">ArchAgent ↗</a><small>Pan 等 · ICASSP 2026</small></th><td>结合静态分析、代码分段和大模型生成面向业务的多视图架构。</td><td>将讲解绑定到<b>快照、符号和源码行段</b>。代码更新后，读者可以逐条检查旧结论的依据。</td></tr>
+    <tr><th scope="row"><a href="https://bazel.build/remote/caching" target="_blank" rel="noopener">Bazel ↗</a><small>增量构建的工程类比</small></th><td>以构建动作及其输入识别可复用的结果，避免重复执行相同动作。</td><td>把复用单位换成<b>带调用上下文的模型请求</b>，分别判断初读和审校能否沿用。</td></tr>
+  </tbody></table>
+  <div class="refs"><a href="开发流程与创新方向参考.md" target="_blank" rel="noopener">文献与方法笔记 ↗</a><a href="../how2trust/business_groups.py" target="_blank" rel="noopener">业务归并证据 ↗</a><a href="../how2trust/claim_drift.py" target="_blank" rel="noopener">跨版本证据核对 ↗</a></div>
+</section>
+<section class="slide" id="cache" data-name="核心特点 · 代码分块缓存">
+  <div class="intro"><div class="folio">04 <i>/</i> 核心特点 · 代码分块缓存</div><h2>改的是调用方，被调用方的讲解也可能过时</h2><p class="lead">coding agent 往往每轮只改一处。再次生成业务图时，工作台先在本地重建静态事实，再判断哪些材料值得重新发给模型。</p></div>
+  <div class="cachegrid">
+    <ol class="steps"><li><strong>把生产源码划成稳定的阅读批次</strong><span>按目录、文件和源码顺序组织，在预算允许时保留完整类或函数。块内带行号的源码有独立内容指纹。</span></li><li><strong>把调用上下文纳入复用判断</strong><span>请求包含本阶段实际使用的源码、关系或审校材料。即使函数体没变，调用方改变的条件也能使相关请求失效。</span></li><li><strong>逐阶段复用已验证的回复</strong><span>同一仓库和模型配置下，提示与请求内容相同即可从磁盘复用。初读能沿用而审校材料变化时，只重做相应审校。</span></li></ol>
+    <div class="paperbox panel"><h3>一次订单项目的迭代</h3><p class="note" style="margin:4px 0 10px">选择改动，查看三个模块的初读与审校。</p>
+      <div class="tabs" role="group" aria-label="订单项目的改动"><button type="button" data-cache="first" aria-pressed="false">首次生成</button><button type="button" data-cache="tests" aria-pressed="false">只改测试</button><button type="button" data-cache="guard" aria-pressed="true">改发货条件</button></div>
+      <div id="batch-states" aria-live="polite"><div class="batchrow"><code>orders/api.py</code><span class="state refresh">重新请求</span></div><div class="batchrow"><code>shipping/service.py</code><span class="state refresh">重新请求</span></div><div class="batchrow"><code>reports/totals.py</code><span class="state">复用</span></div><p class="note" id="cache-note">订单入口把发货条件从 ready 改为 paid。发货函数的实现没变，但它引用的触发条件变了。报表与此次改动无关。</p></div>
+    </div>
+  </div>
+  <div class="refs"><a href="../how2trust/semantics.py" target="_blank" rel="noopener">分块与调用上下文 ↗</a><a href="../how2trust/semantic_cache.py" target="_blank" rel="noopener">请求指纹与磁盘缓存 ↗</a><a href="../tests/test_incremental_semantics.py" target="_blank" rel="noopener">跨版本回归用例 ↗</a></div>
+</section>
+<section class="slide" id="cost" data-name="增量重绘实验">
+  <div class="intro"><div class="folio">05 <i>/</i> 增量重绘实验</div><h2>小改动后，模型少读了多少？</h2><p class="lead">在含订单、发货、报表的测试仓库中，只把订单入口的 <code>order.ready</code> 改为 <code>order.paid</code>。对同一份改后源码，分别用空缓存和上轮缓存生成整仓业务讲解。</p></div>
+  <div class="measure"><figure class="chart"><figcaption>整仓讲解各模型阶段的输入字符总数</figcaption><div class="bar-top"><span>清空缓存 · 10 次请求</span><b>20,845</b></div><div class="track"><span></span></div><div class="bar-top"><span>沿用缓存 · 8 次请求</span><b>16,997</b></div><div class="track"><span class="warm"></span></div><small>计数包含系统提示和序列化请求正文。</small></figure><div class="numbers"><div class="big">18.46<span style="font-size:.55em">%</span></div><h3>少发送 3,848 个输入字符</h3><p>两次生成的讲解文件内容完全一致。另一次只改测试注释时，生产业务讲解的新增模型请求为 <b>0 次</b>。</p></div></div>
+  <p class="stripe"><b>较大仓库的对照。</b> 在 Scrapy 固定提交 <code>f9a9860</code> 中反转一个调度条件，93 个初读请求中有 <b>92 个指纹相同</b>。发生变化的请求占 30,405 / 2,579,847 个初读输入字符。</p>
+  <div class="note">订单实验使用本地固定回复模型，测量实际发送的字符。Scrapy 实验在本地比较请求指纹，仅涵盖初读。两项均未测量云端计费 token 或费用。</div>
+  <div class="refs"><a href="../tests/test_incremental_semantics.py" target="_blank" rel="noopener">订单实验夹具 ↗</a><a href="https://github.com/scrapy/scrapy/blob/f9a98603066240bcb7065f3058018b8cb068a656/scrapy/core/scheduler.py#L251-L260" target="_blank" rel="noopener">Scrapy 固定版调用点 ↗</a></div>
+</section>
+<section class="slide" id="evidence" data-name="How to trust · 源码演示">
+  <div class="intro"><div class="folio">06 <i>/</i> How to trust · 源码演示</div><h2>订单退货后，什么时候会触发重试？</h2><p class="lead">假设产品意图是“仅可售退货才重新尝试分配”。沿模块协作图找到退货处理和重试之间的调用，再检查这个调用成立的条件。</p></div>
+  <div class="casegrid"><div class="reading"><div class="choices" role="group" aria-label="选择要核对的业务问题"><button type="button" data-case="reject" aria-pressed="false">① 拒绝退货</button><button type="button" data-case="stock" aria-pressed="false">② 更新库存</button><button type="button" data-case="retry" aria-pressed="true">③ 触发重试</button></div>
+    <div class="case-result" aria-live="polite"><h3 id="case-title">可售退货才调用 retry()</h3><p class="bodytext" id="case-text">库存更新后，第 185 行检查退货质量。只有值为 sellable，才执行第 186 行的重试调用。</p></div>
+    <p class="note stripe">同一个质量字段，在库存更新处决定“写哪一列”，在重试处决定“调不调用”。这两个判断支持不同的业务结论。</p></div>
+    <figure class="extract"><figcaption id="code-caption">dispatchdesk/store.py · L180–187</figcaption><div class="codebox" id="case-code" tabindex="0" aria-label="带行号的真实源码节选"><span class="line"><i>180  </i>column = "available" if quality == "sellable" else "damaged"</span><span class="line"><i>181  </i>self.db.execute(</span><span class="line omitted"><i> …   </i>　…</span><span class="line"><i>184  </i>)</span><span class="line on"><i>185  </i>if quality == "sellable":</span><span class="line on"><i>186  </i>    self.retry()</span><span class="line"><i>187  </i>return self.status(oid)</span></div></figure>
+  </div>
+  <div class="refs"><span>节选保留原行号，公共缩进按展示调整。</span><a href="../audit/terra-fulfillment/project/dispatchdesk/store.py" target="_blank" rel="noopener">完整退货实现 ↗</a><a href="../audit/fulfillment-deepseek-improved/architecture.html" target="_blank" rel="noopener">打开案例架构图 ↗</a></div>
+</section>
+<section class="slide" id="evaluation" data-name="证据与评测">
+  <div class="intro"><div class="folio">07 <i>/</i> 证据与评测</div><h2>哪些结论经得起核查？</h2><p class="lead">调用关系、条件可见性、旧证据的变化是三个独立的问题。把它们分开测量，才能知道读图时哪一步仍需要人工判断。</p></div>
+  <div class="results"><article class="result"><div class="metric">81 / 119</div><h3>预测的调用对中有多少命中？</h3><p>在 PyCG 的 112 个 Python 微型用例上，工作台预测 119 对调用，命中参考集 254 对中的 81 对。精确率为 <b>68.07%</b>，召回率为 <b>31.89%</b>。</p><p class="note">按调用方与被调用方去重。赋值别名会造成漏边，构造函数的表示差异也计入不匹配。</p></article>
+  <article class="result"><div class="metric">3/5 → 5/5</div><h3>从总览能否找到动作发生的条件？</h3><p>对 Scrapy 同一提交的 5 个预选调用点，仅给出调用行引用。改进后，能打开相关条件证据的从 3 个增至 5 个，读者可以检查提前退出和所在分支。</p><p class="note">这里测量的是所选调用的证据可见性，样本规模为 5。</p></article></div>
+  <p class="stripe"><b>再检验一次版本变化。</b> 在退货案例的副本中，把第 185 行的 <code>==</code> 改为 <code>!=</code>。工作台在 9 条历史结论中标出 2 条的实现证据变化，其余 7 条的原引用仍匹配。</p>
+  <div class="refs"><a href="首轮源码架构评测.md" target="_blank" rel="noopener">原始计数与对照设计 ↗</a><a href="../tests/bench_pycg.py" target="_blank" rel="noopener">调用边评分脚本 ↗</a><a href="https://github.com/vitsalis/pycg-evaluation/tree/ce37eb5668465b0c17371914e863d699826447ee/data/micro-benchmark" target="_blank" rel="noopener">第三方参考集 ↗</a></div>
+</section>
+<section class="slide" id="outlook" data-name="适用边界与后续验证">
+  <div class="intro"><div class="folio">08 <i>/</i> 适用边界与后续验证</div><h2>使用者怎样把决定权留在自己手里？</h2><p class="lead">每轮交付后，先对照业务图辨认新增职责，再沿关键箭头检查实现。使用者决定哪些设计可以接受、哪些需要调整，并把具体模块与源码位置交给 agent。</p></div>
+  <div class="limits"><div class="limit"><h3>静态图的覆盖</h3><p>当前面向 Python。动态分派和别名会造成漏边，图中缺少箭头不足以说明行为不存在。</p><p class="bodytext">下一步用遗漏样例改善解析，并以独立运行轨迹补证关键路径。</p></div><div class="limit"><h3>业务解释的充分性</h3><p>引用可定位，文字仍可能过度概括。已有样例只验证了部分条件和例外。</p><p class="bodytext">下一步让读者逐句复核讲解，记录找对证据的比例与耗时。</p></div><div class="limit"><h3>缓存收益的外推</h3><p>分块包含行号和调用上下文。同一文件前部插入代码，也可能使后续请求需要重算。</p><p class="bodytext">下一步沿真实仓库的连续提交测量，按阶段记录计费 token、耗时和命中率。</p></div></div>
+  <p class="closing"><strong>How to trust 的落点</strong>　使用者能指出“这项设计在哪里实现、什么条件下生效、改动后要重查什么”，才有依据把实际产品调回预期方向。</p>
+  <div class="refs"><a href="从源码仓库生成架构图.html" target="_blank" rel="noopener">工作台操作说明 ↗</a><a href="首轮源码架构评测.md" target="_blank" rel="noopener">项目评测记录 ↗</a></div>
+</section>
+</main>
+<footer class="foot"><div class="progress" id="progress"></div><span class="position" id="position" role="status">01 / 08 · 研究动机</span><div class="pager"><button type="button" class="navbtn" id="prev">← 上一页</button><button type="button" class="navbtn next" id="next">下一页 →</button></div></footer>
+<dialog id="contents" aria-labelledby="toc-title"><header><h3 id="toc-title">答辩目录</h3><button type="button" class="tool" id="toc-close">关闭</button></header><ol id="toc-list"></ol></dialog>
+<script>
+"use strict";
+const slides = Array.from(document.querySelectorAll(".slide"));
+const el = id => document.getElementById(id);
+const contents = el("contents");
+let active = 0;
+function displaySlide(){
+  const target = slides.findIndex(slide => "#" + slide.id === location.hash);
+  active = target >= 0 ? target : 0;
+  slides.forEach((slide, i) => {slide.hidden = i !== active;});
+  el("position").textContent = String(active+1).padStart(2,"0")+" / "+String(slides.length).padStart(2,"0")+" · "+slides[active].dataset.name;
+  el("progress").style.width = ((active+1)*100/slides.length)+"%";
+  el("prev").disabled = active === 0;
+  el("next").disabled = active === slides.length-1;
+  window.scrollTo(0,0);
+}
+function turn(to){if(to>=0 && to<slides.length){location.hash=slides[to].id;}}
+slides.forEach(slide=>{
+  const li=document.createElement("li"), link=document.createElement("a");
+  link.href="#"+slide.id; link.textContent=slide.dataset.name;
+  link.addEventListener("click",()=>contents.close()); li.append(link); el("toc-list").append(li);
+});
+el("toc-open").addEventListener("click",()=>contents.showModal());
+el("toc-close").addEventListener("click",()=>contents.close());
+el("prev").addEventListener("click",()=>turn(active-1));
+el("next").addEventListener("click",()=>turn(active+1));
+window.addEventListener("hashchange", displaySlide);
+document.addEventListener("keydown",event=>{
+  if(contents.open || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (event.target.closest && event.target.closest(".codebox"))) return;
+  const offsets={ArrowLeft:-1,ArrowRight:1,PageUp:-1,PageDown:1};
+  if(event.key in offsets){event.preventDefault();turn(active+offsets[event.key]);}
+  else if(event.key==="Home" || event.key==="End"){event.preventDefault();turn(event.key==="Home" ? 0 : slides.length-1);}
+});
+const fullscreen=el("fullscreen");
+if(!document.fullscreenEnabled) fullscreen.hidden=true;
+fullscreen.addEventListener("click",async()=>{
+  try{if(document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen();}
+  catch{fullscreen.textContent="请用浏览器全屏";}
+});
+document.addEventListener("fullscreenchange",()=>{fullscreen.textContent=document.fullscreenElement?"退出全屏":"全屏";});
+const scenarios={
+  first:{states:["首次请求","首次请求","首次请求"],note:"首次生成没有历史回复。订单入口、发货和报表的材料分别进入模型，验证后的回复写入本地缓存。"},
+  tests:{states:["复用","复用","复用"],note:"只在测试文件里增加注释。仓库快照改变，但生产代码及相关请求材料相同，三个模块均可复用。"},
+  guard:{states:["重新请求","重新请求","复用"],note:"订单入口把发货条件从 ready 改为 paid。发货函数的实现没变，但它引用的触发条件变了。报表与此次改动无关。"}
+};
+function selectCache(key){
+  document.querySelectorAll("[data-cache]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.cache===key)));
+  const scenario=scenarios[key];
+  document.querySelectorAll("#batch-states .state").forEach((node,i)=>{node.textContent=scenario.states[i];node.classList.toggle("refresh",scenario.states[i]!=="复用");});
+  el("cache-note").textContent=scenario.note;
+}
+document.querySelectorAll("[data-cache]").forEach(button=>button.addEventListener("click",()=>selectCache(button.dataset.cache)));
+const snippets={
+  reject:{title:"三种情况会拒绝这次退货",text:"找不到分配记录、分配记录尚未发货，或申请数量超过剩余可退量，都会在第 172 行抛出 Rejected，后面的库存更新和重试不会执行。",range:"167–172",lines:[[167,"if ("],[168,"    row is None"],[169,'    or not row["shipped"]'],[170,'    or qty > row["qty"] - row["returned_sellable"] - row["returned_damaged"]'],[171,"):"],[172,'    raise Rejected("return exceeds shipped quantity")']],mark:[168,169,170,172]},
+  stock:{title:"质量字段决定更新哪一列库存",text:"通过前置检查后，代码按质量选择 available 或 damaged，再把退回的数量加到所选列。两种质量都会执行这次库存更新。",range:"180–184",lines:[[180,'column = "available" if quality == "sellable" else "damaged"'],[181,"self.db.execute("],[182,'    f"UPDATE inventory SET {column}={column}+? WHERE warehouse=? AND sku=?"' + ","],[183,"    (qty, warehouse, sku),"],[184,")"]],mark:[180,181,182]},
+  retry:{title:"可售退货才调用 retry()",text:"库存更新后，第 185 行检查退货质量。只有值为 sellable，才执行第 186 行的重试调用。",range:"180–187",lines:[[180,'    column = "available" if quality == "sellable" else "damaged"'],[181,"    self.db.execute("],[0,"        …"],[184,"    )"],[185,'    if quality == "sellable":'],[186,"        self.retry()"],[187,"return self.status(oid)"]],mark:[185,186]}
+};
+function selectCase(key){
+  const item=snippets[key];
+  document.querySelectorAll("[data-case]").forEach(button=>button.setAttribute("aria-pressed",String(button.dataset.case===key)));
+  el("case-title").textContent=item.title;el("case-text").textContent=item.text;el("code-caption").textContent="dispatchdesk/store.py · L"+item.range;
+  const rows=item.lines.map(([number,code])=>{
+    const line=document.createElement("span"), label=document.createElement("i");
+    line.className="line"+(item.mark.includes(number)?" on":"")+(!number?" omitted":"");label.textContent=(number||" … ")+"  ";
+    line.append(label,document.createTextNode(code));return line;
+  });
+  el("case-code").replaceChildren(...rows);el("case-code").scrollLeft=0;
+}
+document.querySelectorAll("[data-case]").forEach(button=>button.addEventListener("click",()=>selectCase(button.dataset.case)));
+selectCase("retry");displaySlide();
+</script>
+</body>
+</html>

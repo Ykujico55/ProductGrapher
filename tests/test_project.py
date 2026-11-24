@@ -16,9 +16,6 @@ from how2trust.review_html import render_report
 from how2trust.web import make_server, standalone
 
 
-EXAMPLE = Path(__file__).resolve().parents[1] / "examples" / "shop"
-
-
 def descend(tree, *path):
     for segment in path:
         tree = next(item for item in tree["children"] if item["label"] == segment)
@@ -72,9 +69,21 @@ class ProjectTests(unittest.TestCase):
 
     def test_copy_is_byte_identical_including_export(self):
         with tempfile.TemporaryDirectory() as tmp:
+            original = Path(tmp, "orders")
+            original.mkdir()
+            (original / "how2trust.ini").write_text(
+                "[project]\nname = 订单工作台\n[group:交易服务/订单管理/取消订单]\nentries = main.py::cancel_order\n",
+                encoding="utf-8",
+            )
+            (original / "main.py").write_text(
+                'from fastapi import FastAPI\napp = FastAPI()\n'
+                'def cancel(order_id): return order_id\n'
+                '@app.delete("/orders/{order_id}")\ndef cancel_order(order_id): return cancel(order_id)\n',
+                encoding="utf-8",
+            )
             clone = Path(tmp, "different-name")
-            shutil.copytree(EXAMPLE, clone)
-            first, second = build_graph(EXAMPLE), build_graph(clone)
+            shutil.copytree(original, clone)
+            first, second = build_graph(original), build_graph(clone)
             self.assertEqual(canonical(first), canonical(second))
             self.assertEqual(standalone(first), standalone(second))
             group = descend(first["tree"], "交易服务", "订单管理", "取消订单")
@@ -106,8 +115,9 @@ class ProjectTests(unittest.TestCase):
             self.assertNotIn(b'src="/assets/', html)
 
     def test_local_server_annotation_roundtrip(self):
-        graph = build_graph(EXAMPLE)
         with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "main.py").write_text("def submit_order(): pass\n")
+            graph = build_graph(Path(tmp))
             discussion = Discussion(Path(tmp, "state.db"), graph, {})
             with make_server(graph, discussion, 0) as server:
                 worker = threading.Thread(target=server.serve_forever, daemon=True)

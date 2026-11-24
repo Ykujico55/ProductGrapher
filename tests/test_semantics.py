@@ -200,6 +200,11 @@ class SemanticTests(unittest.TestCase):
                 return json.dumps({"claimIds": [1]})
             if data["task"] == "verify":
                 self.assertIn("return 'partial'", "\n".join(s["text"] for s in data["sources"]))
+                if not any(n["kind"] == "entry" for n in data["nodes"]):
+                    self.assertTrue(any(n["qualname"] == "ship" for n in data["nodes"]))
+                    self.assertTrue(any(row["action"]["file"] == "cli.py" and row["action"]["line"] == 8
+                                        for row in data["actionFacts"]))
+                    return json.dumps({"claimReplacements": [], "itemReplacements": []})
                 first = data["draft"]["claims"][0]
                 entry = next(n for n in data["nodes"] if n["kind"] == "entry")
                 return json.dumps({"claimReplacements": [{"id": first["id"], "claims": [

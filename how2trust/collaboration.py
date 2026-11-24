@@ -47,7 +47,28 @@ class _CallConditions:
                 "end": end if end is not None else node.end_lineno}
 
     def predicate(self, test, truth):
-        return self.fact(f"在第 {test.lineno} 行判断为{'真' if truth else '假'}：{ast.unparse(test)}", test)
+        expression = ast.unparse(test)
+        text = f"在第 {test.lineno} 行判断为{'真' if truth else '假'}：{expression}"
+        if isinstance(test, ast.Subscript):
+            text += "（下标取值成功后，判断取出值的真假）"
+        return {**self.fact(text, test), "kind": "predicate", "truth": truth, "expression": expression}
+
+    def value_choices(self, values):
+        choices = []
+        for value in values:
+            if isinstance(value, (ast.List, ast.Tuple)):
+                choices.extend(self.value_choices(value.elts))
+            elif isinstance(value, ast.IfExp):
+                test, yes, no = (self.fact(ast.unparse(expr), expr)
+                                 for expr in (value.test, value.body, value.orelse))
+                choices.append({**self.fact(f"{test['text']} 为真时取 {yes['text']}，为假时取 {no['text']}", value),
+                                "test": test, "whenTrue": yes, "whenFalse": no})
+        return choices
+
+    def call_arguments(self, call):
+        # A choice nested in another call (or a deferred lambda) belongs to
+        # that expression. Only describe values supplied directly to this call.
+        return self.value_choices([*call.args, *(kw.value for kw in call.keywords)])
 
     def exit_from(self, statements):
         if statements:
@@ -68,6 +89,12 @@ class _CallConditions:
             self.visit(statement, active)
             if isinstance(statement, ast.If):
                 active.extend(self.forward_guards(statement))
+            elif isinstance(statement, ast.Assert):
+                test = self.fact(ast.unparse(statement.test), statement.test)
+                text = (f"启用断言时，第 {statement.lineno} 行的 {test['text']} 必须为真，"
+                        "若为假则抛出 AssertionError（-O 下跳过此检查）")
+                active.append({**self.fact(text, statement), "kind": "assertion",
+                               "predicate": {**test, "truth": True}})
             elif isinstance(statement, (ast.With, ast.AsyncWith)):
                 # A return inside a context manager still leaves the enclosing
                 # function. An exception may be suppressed by __exit__, so never
@@ -77,12 +104,18 @@ class _CallConditions:
                         active.extend(self.forward_guards(child, in_with=True))
 
     def forward_guards(self, statement, in_with=False):
-        for body, truth in ((statement.body, "真"), (statement.orelse, "假")):
+        for body, truth in ((statement.body, True), (statement.orelse, False)):
             keyword = self.exit_from(body)
             if keyword and (not in_with or keyword in {"return", "continue", "break"}):
                 when = "前方 with 块内" if in_with else "前方"
-                yield self.fact(f"{when}分支判断为{truth}且执行至末尾时走向 {keyword}：{ast.unparse(statement.test)}",
-                                statement.test, body[-1].end_lineno)
+                predicate = self.fact(ast.unparse(statement.test), statement.test)
+                exit_statement = self.fact(ast.unparse(body[-1]), body[-1])
+                text = (f"{when}分支判断为{'真' if truth else '假'}且执行至末尾时走向 {keyword}："
+                        f"{predicate['text']}")
+                if exit_statement["text"] != keyword:
+                    text += f"（{exit_statement['text']}）"
+                yield {**self.fact(text, statement.test, exit_statement["end"]), "kind": "priorExit",
+                       "predicate": {**predicate, "truth": truth}, "exit": exit_statement, "inWith": in_with}
 
     def visit(self, node, active):
         if node in self.watch:
@@ -90,7 +123,7 @@ class _CallConditions:
         if isinstance(node, ast.Call):
             key = (node.lineno, node.col_offset + 1)
             if key in self.positions:
-                self.found[key] = list(active)
+                self.found[key] = {"conditions": list(active), "valueChoices": self.call_arguments(node)}
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             for field, value in ast.iter_fields(node):
                 if field != "body":
@@ -178,10 +211,23 @@ def collaboration_graph(graph, guide=None):
     groups = {leaf_id: group for group in guide.get("groups", [])
               for child in group["children"] for leaf_id in child["nodeIds"] if leaf_id in nodes}
     parents = {e["target"]: e["source"] for e in graph["edges"] if e["kind"] == "contains"}
+    links = [e for e in graph["edges"] if e["kind"] in {"calls", "handles"} and e["file"] in production
+             and e["source"] in nodes and e["target"] in nodes]
     handlers = defaultdict(set)
-    for e in graph["edges"]:
-        if e["kind"] == "handles" and e["target"] in nodes:
-            handlers[e["source"]].add(e["target"])
+    bindings = defaultdict(list)
+    prefixes = defaultdict(list)
+    for edge in links:
+        if nodes[edge["source"]]["kind"] == "entry":
+            prefixes[edge["target"]].append((edge["source"], [edge["id"]]))
+            if edge["kind"] == "handles":
+                handlers[edge["source"]].add(edge["target"])
+                bindings[edge["target"]].append(edge)
+    # Registration is a binding, not a call: Click/HTTP handlers get the
+    # same two evidenced call steps as a directly dispatched CLI command.
+    for edge in links:
+        if edge["kind"] == "calls" and edge["source"] != edge["target"]:
+            for binding in bindings.get(edge["source"], ()):
+                prefixes[edge["target"]].append((binding["source"], [binding["id"], edge["id"]]))
 
     modules, owners = {}, {}
     for key, node in nodes.items():
@@ -206,26 +252,37 @@ def collaboration_graph(graph, guide=None):
         modules[module_id]["refs"].append({"file": node["file"], "line": node["line"], "end": node["line"]})
 
     pairs = defaultdict(list)
+    internal_sites = []
     by_file = defaultdict(list)
-    for edge in graph["edges"]:
-        source, target = owners.get(edge["source"]), owners.get(edge["target"])
-        if (edge["kind"] not in {"calls", "handles"} or edge["file"] not in production
-                or not source or not target or source == target):
-            continue
+    for edge in links:
+        source, target = owners[edge["source"]], owners[edge["target"]]
+        if nodes[edge["source"]]["kind"] == "entry":
+            paths = [{"entry": edge["source"], "edges": [edge["id"]]}]
+        else:
+            paths = [{"entry": entry, "edges": [*prefix, edge["id"]]}
+                     for entry, prefix in prefixes.get(edge["source"], ())]
         site = {**ref(edge), "column": edge["column"], "edgeId": edge["id"], "kind": edge["kind"],
-                "caller": edge["source"], "callee": edge["target"], "conditions": []}
-        pairs[source, target].append(site)
+                "caller": edge["source"], "callee": edge["target"], "conditions": [], "valueChoices": [],
+                "entryPaths": paths}
+        if source == target:
+            internal_sites.append(site)
+        else:
+            pairs[source, target].append(site)
         if edge["kind"] == "calls":
             by_file[site["file"]].append(site)
     for file, sites in by_file.items():
         positions = {(s["line"], s["column"]) for s in sites}
         # The index only emits calls from successfully parsed Python sources.
         tree = ast.parse(graph["files"][file], filename=file)
-        conditions = _CallConditions(file, tree, positions).found
+        contexts = _CallConditions(file, tree, positions).found
         for site in sites:
-            site["conditions"] = conditions.get((site["line"], site["column"]), [])
+            site.update(contexts.get((site["line"], site["column"]), {}))
+
+    def site_order(site):
+        return site["file"], site["line"], site["column"], site["edgeId"]
+
     relations = [{"id": "collab:relation:" + digest([a, b])[:24], "source": a, "target": b,
-                  "sites": sorted(sites, key=lambda s: (s["file"], s["line"], s["column"], s["edgeId"]))}
+                  "sites": sorted(sites, key=site_order)}
                  for (a, b), sites in sorted(pairs.items())]
     connected = {module for pair in pairs for module in pair}
     visible = [module for module in modules.values()
@@ -234,4 +291,5 @@ def collaboration_graph(graph, guide=None):
         module["nodeIds"].sort()
         refs = {(r["file"], r["line"]): r for r in module["refs"]}
         module["refs"] = [refs[key] for key in sorted(refs)]
-    return {"modules": sorted(visible, key=lambda m: (m["label"], m["id"])), "relations": relations}
+    return {"modules": sorted(visible, key=lambda m: (m["label"], m["id"])), "relations": relations,
+            "internalSites": sorted(internal_sites, key=site_order)}

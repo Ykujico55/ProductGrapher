@@ -96,6 +96,117 @@ class CollaborationTests(unittest.TestCase):
             relation, = view["relations"]
             site, = relation["sites"]
             self.assertEqual((site["kind"], site["line"], site["conditions"]), ("handles", 2, []))
+            self.assertEqual(site["entryPaths"], [{"entry": site["caller"], "edges": [site["edgeId"]]}])
+
+    def test_assertions_only_reach_subsequent_calls_on_the_same_path(self):
+        source = """def trace(label): pass
+def run(ready, other, test):
+    trace('before')
+    if other:
+        assert test
+        trace('conditional')
+    else:
+        trace('sibling')
+    trace('after branch')
+    assert (
+        ready
+    ), 'missing state'
+    trace('after check')
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "flow.py").write_text(source, encoding="utf8")
+            view = build_graph(root)["collaboration"]
+        checks = {site["line"]: [c for c in site["conditions"] if c.get("kind") == "assertion"]
+                  for site in view["internalSites"]}
+        self.assertEqual({line: [c["line"] for c in conditions] for line, conditions in checks.items()},
+                         {3: [], 6: [5], 8: [], 9: [], 13: [10]})
+        check, = checks[13]
+        self.assertEqual((check["file"], check["line"], check["end"]), ("flow.py", 10, 12))
+        self.assertEqual(check["predicate"], {"file": "flow.py", "line": 11, "end": 11, "text": "ready",
+                                            "truth": True})
+        self.assertIn("若为假则抛出 AssertionError", check["text"])
+        self.assertIn("-O 下跳过此检查", check["text"])
+
+    def test_order_retry_call_sites_have_independent_entry_paths_and_rejections(self):
+        root = Path(__file__).resolve().parents[1] / "audit/terra-fulfillment/project"
+        graph = build_graph(root)
+        view = graph["collaboration"]
+        nodes = {n["id"]: n for n in graph["nodes"]}
+        edges = {e["id"]: e for e in graph["edges"]}
+        internal = {s["edgeId"] for s in view["internalSites"]}
+        self.assertFalse(internal.intersection(s["edgeId"] for r in view["relations"] for s in r["sites"]))
+        by_entry = {}
+        for site in view["internalSites"]:
+            if nodes[site["callee"]]["qualname"] != "Desk.retry":
+                continue
+            path, = site["entryPaths"]
+            start, end = path["edges"]
+            self.assertEqual(edges[start]["source"], path["entry"])
+            self.assertEqual(edges[start]["target"], site["caller"])
+            self.assertEqual(end, site["edgeId"])
+            by_entry[nodes[path["entry"]]["label"]] = site
+        self.assertEqual({k: s["line"] for k, s in by_entry.items()}, {"stock": 101, "cancel": 157, "return": 186})
+        self.assertEqual(by_entry["stock"]["conditions"], [])
+        cancel, = by_entry["cancel"]["conditions"]
+        self.assertIn("cannot be cancelled", cancel["exit"]["text"])
+        prior, sellable = by_entry["return"]["conditions"]
+        self.assertEqual(prior["kind"], "priorExit")
+        self.assertTrue(prior["predicate"]["truth"])
+        self.assertEqual((prior["predicate"]["line"], prior["predicate"]["end"], prior["exit"]["line"]), (168, 170, 172))
+        self.assertIn("return exceeds shipped quantity", prior["exit"]["text"])
+        self.assertEqual((sellable["kind"], sellable["truth"], sellable["line"]), ("predicate", True, 185))
+
+    def test_argument_choice_is_distinct_from_call_conditions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "sink.py").write_text("def save(value): pass\n", encoding="utf8")
+            (root / "flow.py").write_text(
+                "from sink import save\n"
+                "def run(pending):\n"
+                "    save(('partial' if pending else 'shipped',))\n"
+                "    save(lambda: 'a' if pending else 'b')\n"
+                "    save(save('retry' if pending else 'done'))\n", encoding="utf8")
+            view = collaboration_graph(build_graph(root))
+        sites = view["relations"][0]["sites"]
+        self.assertEqual(len(sites), 4)
+        self.assertTrue(all(s["conditions"] == [] and s["entryPaths"] == [] for s in sites))
+        choice, = sites[0]["valueChoices"]
+        self.assertEqual([choice[k]["text"] for k in ("test", "whenTrue", "whenFalse")],
+                         ["pending", "'partial'", "'shipped'"])
+        self.assertEqual((sites[1]["valueChoices"], sites[2]["valueChoices"]), ([], []))
+        self.assertEqual(sites[3]["valueChoices"][0]["whenFalse"]["text"], "'done'")
+
+    def test_registration_allows_two_call_steps_from_the_bound_handler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "flow.py").write_text(
+                "import click\n"
+                "def flush(): pass\n"
+                "def save(): flush()\n"
+                "def stage(): save()\n"
+                "@click.command()\n"
+                "def send(active):\n"
+                "    if active:\n        stage()\n"
+                "@click.command()\n"
+                "def receive(blocked):\n"
+                "    if blocked:\n        return\n"
+                "    stage()\n", encoding="utf8")
+            graph = build_graph(root)
+        edges = {edge["id"]: edge for edge in graph["edges"]}
+        calls = {s["line"]: s for s in graph["collaboration"]["internalSites"] if s["kind"] == "calls"}
+        routes = []
+        for path in calls[4]["entryPaths"]:
+            evidence = [edges[edge_id] for edge_id in path["edges"]]
+            self.assertEqual([e["kind"] for e in evidence], ["handles", "calls", "calls"])
+            self.assertEqual(evidence[0]["source"], path["entry"])
+            self.assertEqual(evidence[-1]["id"], calls[4]["edgeId"])
+            routes.append([e["line"] for e in evidence])
+        self.assertCountEqual(routes, [[5, 8, 4], [9, 13, 4]])
+        self.assertEqual([c["kind"] for c in calls[8]["conditions"]], ["predicate"])
+        self.assertEqual([c["kind"] for c in calls[13]["conditions"]], ["priorExit"])
+        self.assertEqual(calls[4]["conditions"], [])
+        self.assertEqual(calls[3]["entryPaths"], [])
 
     def test_prior_judgment_and_nested_exits_do_not_assert_current_state(self):
         src = """from target import save

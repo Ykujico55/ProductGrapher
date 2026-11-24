@@ -34,6 +34,7 @@
     group: "功能分组",
     capability: "模型业务分组",
     collaborationModule: "协作模块",
+    localGroup: "选区业务分组",
     entry: "功能入口",
     module: "源码模块",
     class: "类",
@@ -56,6 +57,7 @@
     module: "模块内部关系图",
     class: "类关系图",
     call: "方法调用链",
+    local: "选区业务图",
   };
   function html(tag, cls, value) {
     const el = document.createElement(tag);
@@ -143,18 +145,23 @@
     questionDraft = "",
     query = "";
   const graphKeys = () => Array.from(chosen);
-  const modules = new Map(), moduleLinks = new Map();
+  const modules = new Map(), moduleLinks = new Map(), callSites = new Map();
   const linksPerPage = 5;
   let modulePage = 0;
   let moduleDrill = null;
   let generation = null, generationMonitor = null, serviceProgress = null;
-  const lookup = (id) => tree.get(id) || nodes.get(id) || edges.get(id) || modules.get(id) || moduleLinks.get(id);
+  let activeLocal = null, localOrigin = null, localPending = false, localError = "";
+  const localItems = new Map(), localLinks = new Map();
+  const lookup = (id) => (view === "local" && (localItems.get(id) || localLinks.get(id))) ||
+    tree.get(id) || nodes.get(id) || edges.get(id) || modules.get(id) || moduleLinks.get(id);
   function targetKey(id) {
     const leaf = tree.get(id);
     const key = leaf?.nodeIds?.[0];
     return leaf?.nodeIds?.length === 1 && !leaf.children.length && nodes.get(key)?.kind === leaf.kind ? key : id;
   }
   const selectionTargets = () => [...new Set(graphKeys().flatMap(id => {
+    if (view === "local" && localItems.has(id)) return localItems.get(id).nodeIds;
+    if (view === "local" && localLinks.has(id)) return localLinks.get(id).edgeIds;
     if (moduleLinks.has(id)) return moduleLinks.get(id).sites.map(site => site.edgeId);
     if (modules.has(id)) return modules.get(id).nodeIds;
     return [targetKey(id)];
@@ -187,12 +194,15 @@
   function indexCollaboration() {
     modules.clear();
     moduleLinks.clear();
+    callSites.clear();
+    for (const site of graph.collaboration?.internalSites || []) callSites.set(site.edgeId, site);
     for (const m of graph.collaboration?.modules || [])
       modules.set(m.id, {...m, kind: "collaborationModule", evidence: m.refs});
     const counts = new Map();
     for (const r of graph.collaboration?.relations || []) {
       const label = modules.get(r.source).label + " → " + modules.get(r.target).label;
       moduleLinks.set(r.id, {...r, kind: "collaboration", label});
+      for (const site of r.sites) callSites.set(site.edgeId, site);
       counts.set(r.source, (counts.get(r.source) || 0) + 1);
     }
     const focus = $("module-focus"), last = focus.value;
@@ -229,17 +239,27 @@
   function indexSemantics() {
     interpretations = new Map((graph.semantics?.items || []).map(item => [item.nodeId, item]));
     sharedCalls = orderSharedCalls(graph.semantics);
-    const groups = graph.semantics?.groups || [];
-    const entryGroups = groups.filter(group => group.children.some(leaf =>
-      leaf.nodeIds.some(id => nodes.get(id)?.kind === "entry")));
-    const legacyLayers = Number(graph.semantics?.promptVersion || 0) <= 6 && entryGroups.length;
-    const internal = legacyLayers ? groups.filter(group => !entryGroups.includes(group)) : [];
-    rootLayers = {business: legacyLayers ? entryGroups : groups, internal, source: graph.tree.children};
     const layers = $("root-layer");
-    layers.replaceChildren(new Option("业务能力", "business"));
+    const previousLayer = (rootLayers?.all.length || layers.value === "source") ? layers.value : "";
+    const groups = graph.semantics?.groups || [];
+    const entryGroups = new Set(groups.filter(group => group.children.some(leaf =>
+      leaf.nodeIds.some(id => nodes.get(id)?.kind === "entry"))));
+    const internal = entryGroups.size ? groups.filter(group => !entryGroups.has(group)) : [];
+    // The role-projected source tree keeps production roots separate from tests and examples.
+    function hasProductionMember(branch) {
+      return branch.nodeIds.some(id => graph.fileRoles[nodes.get(id).file] === "production") ||
+        branch.children.some(hasProductionMember);
+    }
+    const source = graph.fileRoles ? graph.tree.children.filter(hasProductionMember) : graph.tree.children;
+    rootLayers = {all: groups, business: internal.length ? [...entryGroups] : groups, internal, source};
+    layers.replaceChildren();
+    if (internal.length) layers.add(new Option("全部业务分组", "all"));
+    layers.add(new Option(internal.length ? "入口业务能力" : "业务能力", "business"));
     if (internal.length) layers.add(new Option("内部职责", "internal"));
-    if (graph.semantics && Number(graph.semantics.promptVersion || 0) <= 6)
-      layers.add(new Option("源码与配置", "source"));
+    if (source.length) layers.add(new Option("源码与配置", "source"));
+    // Preserve each guide's initial overview. Available filters depend only on its data.
+    const defaultLayer = internal.length && Number(graph.semantics?.promptVersion) > 6 ? "all" : "business";
+    layers.value = [...layers.options].some(option => option.value === previousLayer) ? previousLayer : defaultLayer;
     productRoot = groups.length ? {...graph.tree, children: [...rootLayers.business, ...internal, ...graph.tree.children]} : graph.tree;
     tree.set(productRoot.id, productRoot);
     for (const group of groups) {
@@ -262,7 +282,7 @@
   }
   function updateGenerationButton() {
     const button = $("generate-semantics");
-    button.hidden = offline || !state.semanticLlm?.configured || (!!graph.semantics && !state.semanticLlm.canRegenerate);
+    button.hidden = offline || view === "local" || !state.semanticLlm?.configured || (!!graph.semantics && !state.semanticLlm.canRegenerate);
     button.disabled = generation?.status === "running";
     button.textContent = button.disabled ? "正在生成业务图…" : graph.semantics ? "用当前模型重新生成" : "一键生成业务图";
     if (!button.hidden) button.title = [state.semanticLlm.provider, state.semanticLlm.model].filter(Boolean).join(" · ");
@@ -406,6 +426,106 @@
         {...generation, status: "failed", error: message});
     }
   }
+  function localTargets() {
+    return graphKeys().filter(id => id !== productRoot.id && lookup(id)).sort();
+  }
+  function refreshLocalHistory() {
+    const history = $("local-history");
+    history.replaceChildren(new Option("已生成的选区业务图", ""));
+    for (const item of graph.localBusinessViews || []) {
+      history.add(new Option(item.title + (item.includeNeighbors ? " · 含直接调用" : " · 仅选区"), item.id));
+    }
+    history.hidden = graph.localOnly || history.options.length < 2;
+    history.value = view === "local" ? activeLocal.id : "";
+  }
+  function updateLocalTools() {
+    const local = view === "local", button = $("generate-local");
+    $("local-actions").hidden = offline || local;
+    $("local-tools").hidden = $("local-actions").hidden && $("local-history").hidden && !localPending && !localError;
+    const targets = local ? [] : localTargets();
+    button.disabled = !targets.length || localPending;
+    button.title = targets.length ? "根据所选 " + targets.length + " 项和相关源码生成局部业务图" : "先在图中或搜索结果中选择模块、符号或关系";
+    $("local-neighbors").disabled = localPending;
+    $("local-progress").hidden = !localPending;
+    $("local-status").classList.toggle("error", !!localError);
+    $("local-status").textContent = localPending ? "模型正在解读所选源码…" : localError ||
+      (!offline && !local && !targets.length ? "先选择模块、符号或关系" : "");
+    $("local-history").value = local ? activeLocal.id : "";
+    $("export").href = local ? "/export.html?local=" + encodeURIComponent(activeLocal.id) : "/export.html";
+    $("export").download = local ? "how2trust-selection.html" : "how2trust.html";
+    $("export").lastChild.textContent = local ? "导出选区 HTML" : "导出 HTML";
+  }
+  function openLocal(item) {
+    if (!item) return;
+    if (view !== "local") {
+      localOrigin = {view, scope, chosen, moduleDrill, inspector, callFocus, wholeCallGraph, currentThread,
+        requestedSource, search: $("search").value, scale, offset: {...offset}, canvasSize, framing};
+    }
+    activeLocal = item;
+    view = "local";
+    moduleDrill = null;
+    currentThread = "";
+    requestedSource = null;
+    wholeCallGraph = false;
+    chosen = new Set();
+    inspector = "evidence";
+    $("search").value = query = "";
+    localItems.clear();
+    localLinks.clear();
+    for (const group of item.groups)
+      localItems.set(group.id, {...group, kind: "localGroup", evidence: group.refs});
+    for (const [index, rel] of item.relations.entries()) {
+      const id = item.id + ":relation:" + index;
+      localLinks.set(id, {...rel, id, kind: "localRelation", evidence: rel.refs,
+        label: localItems.get(rel.source).label + " → " + localItems.get(rel.target).label});
+    }
+    render();
+  }
+  function leaveLocal(redraw = true) {
+    if (view !== "local" || graph.localOnly) return;
+    const origin = localOrigin;
+    view = origin.view;
+    scope = tree.get(origin.scope.id) || productRoot;
+    moduleDrill = origin.moduleDrill;
+    chosen = origin.chosen;
+    inspector = origin.inspector;
+    callFocus = origin.callFocus;
+    wholeCallGraph = origin.wholeCallGraph;
+    currentThread = origin.currentThread;
+    requestedSource = origin.requestedSource;
+    $("search").value = origin.search;
+    query = origin.search.trim().toLowerCase();
+    activeLocal = localOrigin = null;
+    if (redraw) {
+      render();
+      if (origin.canvasSize?.width === canvasSize.width && origin.canvasSize.height === canvasSize.height) {
+        scale = origin.scale;
+        offset = origin.offset;
+        framing = origin.framing;
+        updateTransform();
+      }
+    }
+  }
+  async function generateLocal() {
+    const targets = localTargets(), originView = view;
+    if (!targets.length || localPending || offline || view === "local") return;
+    if (!state.semanticLlm?.configured) return openModelSettings("semantics");
+    localPending = true;
+    localError = "";
+    updateLocalTools();
+    try {
+      const item = await api("semantics/local", "POST", {targets, includeNeighbors: $("local-neighbors").checked});
+      graph.localBusinessViews = [...(graph.localBusinessViews || []).filter(old => old.id !== item.id), item];
+      refreshLocalHistory();
+      if (view === originView && JSON.stringify(targets) === JSON.stringify(localTargets())) openLocal(item);
+      else toast("选区业务图已保存，可从「已生成的选区业务图」打开。");
+    } catch (error) {
+      localError = "选区业务图生成失败 · " + error.message;
+    } finally {
+      localPending = false;
+      updateLocalTools();
+    }
+  }
   function interpretation(item) {
     const id = item.nodeIds?.length === 1 ? item.nodeIds[0] : item.id;
     return interpretations.get(id);
@@ -474,10 +594,12 @@
   }
   function navigate(id) {
     if (!tree.has(id)) return;
+    if (graph.localOnly) return;
+    leaveLocal(false);
     moduleDrill = null;
     const oldSourceLayer = view === "product" && $("root-layer").value === "source";
     setScope(id);
-    if (scope === productRoot) view = graph.semantics && view !== "structure" ? "product" : "structure";
+    if (scope === productRoot) view = view === "product" || (graph.semantics && view !== "structure") ? "product" : "structure";
     else if (scope.children.length) view = scope.kind === "capability" || oldSourceLayer ? "product" : "structure";
     else view = scope.kind === "class" ? "class" : "call";
     selectScopeInView();
@@ -664,6 +786,25 @@
   function renderTree() {
     const nav = $("tree");
     nav.replaceChildren();
+    if (view === "local") {
+      $("nav-title").textContent = "选区业务分组";
+      nav.setAttribute("aria-label", "选区业务分组");
+      $("collapse").hidden = true;
+      const groups = [...localItems.values()].filter(group => !query ||
+        [group.label, group.text, ...group.nodeIds.map(readable)].some(value => value.toLowerCase().includes(query)));
+      for (const group of groups) {
+        const button = action(group.label, "tree-item", () => {
+          pick([group.id]);
+          selectInspector("evidence");
+          centerIfNeeded(group.id);
+        });
+        const row = html("div", "nav-row");
+        row.append(button);
+        nav.append(row);
+      }
+      if (!groups.length) nav.append(html("p", "small-empty", "没有匹配的业务分组。"));
+      return;
+    }
     if (moduleDrill && scope === productRoot) {
       $("nav-title").textContent = "模块成员";
       nav.setAttribute("aria-label", "模块成员");
@@ -685,8 +826,8 @@
       if (!members.length) nav.append(html("p", "small-empty", "没有匹配的模块成员。"));
       return;
     }
-    const businessOnly = view === "product" && (!graph.semantics || Number(graph.semantics.promptVersion) > 6);
-    $("nav-title").textContent = view === "collaboration" ? "协作模块" : businessOnly ? "生产业务" :
+    const productView = view === "product", sourceLayer = productView && $("root-layer").value === "source";
+    $("nav-title").textContent = view === "collaboration" ? "协作模块" : sourceLayer ? "源码与配置" : productView ? "生产业务" :
       view === "structure" ? "整仓结构" : "产品结构";
     nav.setAttribute("aria-label", $("nav-title").textContent);
     $("collapse").hidden = view === "collaboration";
@@ -713,14 +854,14 @@
       if (!visible.length) nav.append(html("p", "small-empty", "没有匹配的生产模块。"));
       return;
     }
-    if (businessOnly && !graph.semantics?.groups?.length) {
+    if (productView && !sourceLayer && !graph.semantics?.groups?.length) {
       nav.append(html("p", "small-empty", "生成业务图后可浏览业务分组。"));
       return;
     }
     const matches = new Set();
     if (query)
       for (const item of tree.values()) {
-        if (view !== "structure" && item.nodeIds?.length === 1 && groupedSymbols.has(item.nodeIds[0]) && !capabilityLeaves.has(item.id)) continue;
+        if (view !== "structure" && !sourceLayer && item.nodeIds?.length === 1 && groupedSymbols.has(item.nodeIds[0]) && !capabilityLeaves.has(item.id)) continue;
         if (item.label.toLowerCase().includes(query) || (view !== "structure" && matchesBusiness(item))) {
           let id = item.id;
           while (id && !matches.has(id)) {
@@ -759,10 +900,10 @@
       if (open.has(item.id) || query) {
         let section = "";
         const visibleChildren = item !== productRoot ? item.children : view === "structure" ? graph.tree.children
-          : businessOnly ? rootLayers.business : item.children;
+          : productView ? (query && !sourceLayer ? rootLayers.all : rootLayers[$("root-layer").value]) : item.children;
         for (const child of visibleChildren) {
           if (query && !matches.has(child.id)) continue;
-          if (item === productRoot && !businessOnly && view !== "structure" && graph.semantics?.groups?.length) {
+          if (item === productRoot && !productView && view !== "structure" && graph.semantics?.groups?.length) {
             const label = child.kind !== "capability" ? "源码与配置" :
               rootLayers.internal.includes(child) ? "内部职责" : "业务能力";
             if (section !== label) nav.append(html("h3", "tree-section", label));
@@ -776,7 +917,7 @@
     if (query) {
       const symbols = graph.nodes.filter(n => {
         if (!["function", "method", "class"].includes(n.kind)) return false;
-        if (businessOnly && graph.fileRoles?.[n.file] && graph.fileRoles[n.file] !== "production") return false;
+        if (productView && graph.fileRoles?.[n.file] && graph.fileRoles[n.file] !== "production") return false;
         const leaf = moduleLeaves.get(n.file);
         const moduleName = leaf ? nodes.get(leaf.nodeIds[0]).qualname : "";
         return matchesBusiness(n) || [moduleName + "." + n.qualname, n.file + "::" + n.qualname]
@@ -864,9 +1005,13 @@
           " · " +
           scope.children.length +
           " 个下级节点";
-    if (scope === productRoot && view === "product" && graph.semantics) {
+    if (scope === productRoot && view === "product" && $("root-layer").value === "source") {
+      $("metrics").textContent = "生产源码中的模块、显式入口和配置分组";
+    } else if (scope === productRoot && view === "product" && graph.semantics) {
       const guide = graph.semantics;
-      $("metrics").textContent = (guide.groups?.length || 0) + " 个业务分组 · " + guide.items.length + " 项源码讲解 · " +
+      const layer = $("root-layer").value;
+      const groupCount = rootLayers[layer].length + (layer === "internal" ? " 个组内无显式入口的分组" : " 个业务分组");
+      $("metrics").textContent = groupCount + " · " + guide.items.length + " 项源码讲解 · " +
         (guide.overview.claims?.length || 0) + " 条总览结论";
     }
     if (view === "collaboration") {
@@ -875,14 +1020,27 @@
     }
     if (moduleDrill && scope === productRoot)
       $("metrics").textContent = modules.get(moduleDrill.id).basis + " · " + moduleDrill.members.size + " 个模块成员";
+    if (view === "local") {
+      $("scope-name").textContent = activeLocal.title;
+      $("metrics").textContent = "选区内 " + activeLocal.selectedNodeIds.length + " 个代码节点" +
+        (activeLocal.includeNeighbors ? " · 直接关联 " + activeLocal.neighborNodeIds.length + " 个节点" : " · 仅选区") +
+        " · " + activeLocal.model;
+      crumbs.replaceChildren(html("span", "", graph.name), html("span", "", "/"), html("span", "", "选区业务图"));
+      $("up").hidden = !!graph.localOnly;
+      $("up-label").textContent = "返回原图";
+    }
+    const searchHint = view === "local" ? "查找选区中的业务分组" :
+      graph.semantics ? "搜索业务词、入口或代码符号" : "查找模块、入口或代码符号";
+    $("search").placeholder = searchHint;
+    $("search").setAttribute("aria-label", searchHint);
+    updateGenerationButton();
     document.querySelectorAll("[data-view]").forEach((b) => {
       const active = b.dataset.view === (view === "module" ? "collaboration" : view);
       b.classList.toggle("active", active);
       b.setAttribute("aria-pressed", String(active));
     });
     $("canvas-name").textContent = viewNames[view];
-    $("root-layer").hidden = !(view === "product" && scope === productRoot && graph.semantics?.groups?.length &&
-      $("root-layer").options.length > 1);
+    $("root-layer").hidden = view !== "product" || $("root-layer").options.length < 2;
     showSharedCalls();
     renderGraph();
     renderInspector();
@@ -901,8 +1059,7 @@
       : 78;
   }
   function businessOverview() {
-    return view === "product" && scope === productRoot && displayNodes.length >= 6 &&
-      Number(graph.semantics?.promptVersion) > 6;
+    return view === "product" && scope === productRoot && $("root-layer").value !== "source" && displayNodes.length >= 6;
   }
   function layout() {
     coordinates = new Map();
@@ -1101,6 +1258,7 @@
     const name = compact && n.basis === "源码模块" ? n.label.split("/").pop() : title || n.label;
     labelSvg(group, 12, compact ? 21 : 49, "name", clip(name, compact ? Math.floor((p.w - 22) / 8) : 23));
     let detail = n.file ? n.file + ":" + n.line : "";
+    if (view === "local") detail = n.nodeIds.length + " 个代码节点 · " + n.text;
     if (view === "collaboration") detail = n.basis + " · " + n.nodeIds.length + " 个节点";
     if (view === "product" || view === "structure")
       detail = n.children.length
@@ -1231,8 +1389,10 @@
       labelX = incoming ? ax + 20 : bx - 20;
       labelY = (incoming ? ay : by) - 6;
     }
-    const relationLabel = e.source === e.target && e.kind === "calls" ? "递归调用" : relations[e.kind] || e.kind;
-    const title = collab ? e.label + " · " + e.sites.length + " 处" : relationLabel;
+    const relationLabel = view === "local" ? e.edgeIds.length + " 处关系" :
+      e.source === e.target && e.kind === "calls" ? "递归调用" : relations[e.kind] || e.kind;
+    const title = view === "local" ? e.label + " · " + relationLabel :
+      collab ? e.label + " · " + e.sites.length + " 处" : relationLabel;
     const el = svg("g", {
       class: "graph-edge",
       tabindex: "0",
@@ -1321,7 +1481,11 @@
     range.hidden = true;
     $("module-controls").hidden = view !== "collaboration";
     $("module-focus").disabled = $("module-direction").value === "all";
-    if (view === "collaboration") {
+    if (view === "local") {
+      scopedCode = {items: [], links: []};
+      displayNodes = [...localItems.values()];
+      displayEdges = [...localLinks.values()];
+    } else if (view === "collaboration") {
       scopedCode = {items: [], links: []};
       const selected = collaborationView();
       displayNodes = selected.items;
@@ -1330,8 +1494,7 @@
       scopedCode = { items: [], links: [] };
       const children = scope !== productRoot ? scope.children : view === "structure"
         ? graph.tree.children : rootLayers[$("root-layer").value] || [];
-      displayNodes = view === "product" && !graph.semantics?.groups?.length && scope === productRoot
-        ? [] : [scope, ...children];
+      displayNodes = view === "product" && scope === productRoot && !children.length ? [] : [scope, ...children];
       displayEdges = children.map((child) => ({
         source: scope.id,
         target: child.id,
@@ -1405,6 +1568,7 @@
       el.setAttribute("aria-pressed", String(marked));
     });
     $("selection-count").textContent = "已选 " + chosen.size + " 项";
+    updateLocalTools();
   }
   function syncTool() {
     $("drawing").setAttribute("class", tool);
@@ -1652,9 +1816,9 @@
       code.replaceChildren();
       const last = Math.min(
         input.length,
-        full ? end + 1 : Math.min(end + 1, line + 9),
+        full ? end + (view === "local" ? 0 : 1) : Math.min(end + (view === "local" ? 0 : 1), line + 9),
       );
-      for (let i = Math.max(1, line - 1); i <= last; i++) {
+      for (let i = Math.max(1, view === "local" ? line : line - 1); i <= last; i++) {
         const row = html(
           "div",
           "source-line" + (i >= line && i <= end ? " focus" : ""),
@@ -1718,7 +1882,7 @@
   function showSharedCalls() {
     const panel = $("shared-calls"), list = $("shared-list");
     const active = view === "product" && (scope.kind === "capability" ||
-      scope === productRoot && $("root-layer").value === "business");
+      scope === productRoot && ["all", "business"].includes($("root-layer").value));
     const members = new Set(scope.children.flatMap(child => child.nodeIds));
     const visible = active ? sharedCalls.filter(row => scope.id === productRoot.id ||
       members.has(row.target) || row.paths.some(path => members.has(path.entry))) : [];
@@ -1752,9 +1916,83 @@
     const anchor = html("div", "reading-anchor");
     anchor.append(proof(ref));
     const target = sourceNode(ref.file, ref.line);
-    if (target)
+    if (target && view !== "local")
       anchor.append(action("在图中定位 " + target.qualname, "text-btn", () => locateSymbol(target, ref)));
     return anchor;
+  }
+  function showConditions(parent, conditions) {
+    for (const condition of conditions || []) {
+      parent.append(html("p", "condition", condition.text), readingAnchor(condition.predicate || condition));
+      if (condition.kind === "assertion" && condition.predicate &&
+          (condition.line !== condition.predicate.line || condition.end !== condition.predicate.end)) {
+        parent.append(html("p", "subtle", "完整断言语句"), readingAnchor(condition));
+      }
+      if (condition.exit) {
+        parent.append(html("p", "condition", "分支末尾 · " + condition.exit.text), readingAnchor(condition.exit));
+      }
+    }
+  }
+  function showValueChoices(parent, choices, title) {
+    if (!choices?.length) return;
+    parent.append(html("h4", "", title));
+    for (const choice of choices) {
+      parent.append(html("p", "condition", choice.text), readingAnchor(choice));
+    }
+  }
+  function showUncitedEvidence(parent, facts) {
+    const missing = new Map();
+    for (const fact of facts) {
+      for (const ref of fact.uncoveredEvidence || []) {
+        missing.set(JSON.stringify([ref.file, ref.line, ref.end, ref.role, ref.text]), ref);
+      }
+    }
+    if (!missing.size) return;
+    const details = html("details", "reading-citations");
+    details.append(html("summary", "", "结论引用未覆盖的源码依据（" + missing.size + "）"),
+      html("p", "subtle", "以下判断、退出或取值影响已引用的动作，点开可补读对应源码。"));
+    const roles = {condition: "执行条件", exit: "提前退出", value: "条件取值"};
+    for (const ref of missing.values())
+      details.append(html("p", "condition", roles[ref.role] + " · " + ref.text), readingAnchor(ref));
+    parent.append(details);
+  }
+  function showGroupEvidence(parent, label) {
+    const evidence = graph.semantics?.groupEvidence?.[label];
+    if (!evidence) return;
+    const details = html("details", "reading-citations");
+    details.append(html("summary", "", "查看分组依据"));
+    if (evidence.reason) {
+      details.append(html("p", "reading-text", evidence.reason.text));
+      for (const ref of evidence.reason.refs) details.append(readingAnchor(ref));
+    }
+    for (const origin of evidence.origins) {
+      const members = origin.nodeIds.map(id => nodes.get(id)).filter(Boolean);
+      const part = html("details", "reading-citations");
+      part.append(html("summary", "", origin.label + " · " + members.length + " 个源码成员"));
+      series(part, members, node => part.append(action(node.qualname + " · " + node.file + " L" + node.line,
+        "relation-row", () => locateSymbol(node, node))));
+      details.append(part);
+    }
+    for (const shared of evidence.sharedTargets || []) {
+      const target = nodes.get(shared.target);
+      if (!target) continue;
+      const part = html("details", "reading-citations");
+      part.append(html("summary", "", "共同调用 " + target.qualname));
+      for (const id of shared.edgeIds) {
+        const edge = edges.get(id);
+        if (edge) part.append(readingAnchor(edge));
+      }
+      details.append(part);
+    }
+    if (evidence.boundaryCalls?.length) {
+      const calls = html("details", "reading-citations");
+      calls.append(html("summary", "", "跨职责调用示例"));
+      for (const id of evidence.boundaryCalls) {
+        const edge = edges.get(id);
+        if (edge) calls.append(html("p", "subtle", edgeName(edge)), readingAnchor(edge));
+      }
+      details.append(calls);
+    }
+    parent.append(details);
   }
   function showInterpretation(body, selected) {
     const guide = graph.semantics;
@@ -1765,6 +2003,7 @@
       section.append(html("div", "reading-source", "模型业务分组 · " + guide.provider + " / " + guide.model),
         html("h3", "", selected.label));
       body.append(section);
+      showGroupEvidence(section, selected.label);
       series(section, selected.children, leaf => {
         section.append(action(businessLabel(leaf), "relation-row", () => navigate(leaf.id)),
           html("p", "reading-text", interpretation(leaf).text));
@@ -1795,9 +2034,16 @@
         article.append(refs);
         const facts = graph.overviewFacts?.[index] || [];
         if (facts.length) {
+          showUncitedEvidence(article, facts);
           const conditions = html("details", "reading-citations");
           conditions.append(html("summary", "", "源码中的分支与筛选（" + facts.length + "）"));
-          for (const fact of facts) conditions.append(html("p", "reading-text", fact.text), readingAnchor(fact));
+          for (const fact of facts) {
+            const row = html("div", "source-fact");
+            row.append(html("p", "reading-text", fact.action?.text || fact.text), readingAnchor(fact.action || fact));
+            showConditions(row, fact.conditions);
+            showValueChoices(row, fact.valueChoices, "表达式如何取值");
+            conditions.append(row);
+          }
           article.append(conditions);
         }
         section.append(article);
@@ -1826,12 +2072,63 @@
       }
     }
   }
+  function showLocalEvidence(body) {
+    function memberList(label, ids) {
+      if (!ids.length) return;
+      const details = html("details", "module-site");
+      details.append(html("summary", "", label + "（" + ids.length + "）"));
+      series(details, ids, id => {
+        const n = nodes.get(id);
+        details.append(html("p", "subtle", n ? n.qualname + " · " + n.file + ":" + n.line : readable(id)));
+      });
+      body.append(details);
+    }
+    const selected = graphKeys().map(id => localItems.get(id) || localLinks.get(id)).filter(Boolean);
+    if (!selected.length) {
+      body.append(heading("本图的源码范围"));
+      memberList("选中的代码节点", activeLocal.selectedNodeIds);
+      memberList("直接关联的代码节点", activeLocal.neighborNodeIds);
+      if (activeLocal.sourceRanges?.length) {
+        const details = html("details", "module-site");
+        details.append(html("summary", "", "模型可读的源码片段（" + activeLocal.sourceRanges.length + "）"));
+        series(details, activeLocal.sourceRanges, r => details.append(proof(r)));
+        body.append(details);
+      }
+      body.append(html("p", "subtle", "点击业务分组阅读讲解，点击箭头核对分组之间的源码关系。"));
+      return;
+    }
+    for (const item of selected) {
+      body.append(heading(item.label));
+      if (item.nodeIds) {
+        body.append(html("p", "reading-text", item.text));
+        memberList("分组成员", item.nodeIds);
+      } else if (item.sites?.length) {
+        series(body, item.sites, site => {
+          const article = html("article", "module-site");
+          article.append(html("strong", "", edgeName(site)), proof(site, selected.length === 1));
+          showConditions(article, site.conditions);
+          showValueChoices(article, site.valueChoices, "调用参数如何取值");
+          body.append(article);
+        });
+        continue;
+      } else {
+        series(body, item.edgeIds, id => {
+          const edge = edges.get(id);
+          if (edge) body.append(html("p", "subtle", edgeName(edge)));
+        });
+      }
+      series(body, item.refs, r => body.append(proof(r, selected.length === 1 && r === item.refs[0])));
+    }
+  }
   function showEvidence(body) {
+    if (view === "local") return showLocalEvidence(body);
     if (requestedSource) body.append(heading("定位到的源码"), proof(requestedSource, true));
     const selected = chosen.size === 1 && graphKeys()[0];
     if (view === "collaboration" && selected && showCollaborationEvidence(body, selected)) return;
+    if (selected && callSites.has(selected)) body.append(callSiteEvidence(callSites.get(selected)));
     if (moduleDrill && scope === productRoot && selected === moduleDrill.id) {
       body.append(html("h3", "module-title", modules.get(selected).label));
+      if (modules.get(selected).groupId) showGroupEvidence(body, modules.get(selected).label);
       const counts = new Map();
       for (const edge of scopedCode.links) counts.set(edge.kind, (counts.get(edge.kind) || 0) + 1);
       if (counts.size) {
@@ -1933,6 +2230,36 @@
         ),
       );
   }
+  function callSiteEvidence(site) {
+    const block = html("article", "module-site");
+    block.dataset.edge = site.edgeId;
+    const caller = nodes.get(site.caller), callee = nodes.get(site.callee);
+    block.append(html("strong", "", caller.qualname + " → " + callee.qualname));
+    if (site.kind === "handles") block.append(html("p", "subtle", "入口绑定处理函数"));
+    if (site.conditions.length) {
+      block.append(html("h4", "", "源码中的触发条件"));
+      showConditions(block, site.conditions);
+    } else if (site.kind !== "handles")
+      block.append(html("p", "subtle", "执行到此处时调用。此前的返回或异常可能提前结束流程。"));
+    showValueChoices(block, site.valueChoices, "调用参数如何取值");
+    block.append(html("h4", "", site.kind === "handles" ? "绑定位置" : "调用位置"),
+      proof(site, true), action("在图中定位 " + caller.qualname, "text-btn", () => locateSymbol(caller, site)));
+    if (site.entryPaths?.length) {
+      const paths = html("details", "reading-citations");
+      paths.append(html("summary", "", "可定位的入口路径"));
+      for (const path of site.entryPaths) {
+        paths.append(html("p", "reading-text", businessLabel(nodes.get(path.entry))));
+        for (const id of path.edges) {
+          const edge = edges.get(id);
+          if (!edge) continue;
+          paths.append(html("p", "subtle", edgeName(edge)), readingAnchor(edge));
+          if (id !== site.edgeId) showConditions(paths, callSites.get(id)?.conditions);
+        }
+      }
+      block.append(paths);
+    }
+    return block;
+  }
   function showCollaborationEvidence(body, id) {
     const relation = moduleLinks.get(id);
     if (relation) {
@@ -1940,21 +2267,7 @@
       const list = html("div");
       body.append(list);
       series(list, relation.sites, site => {
-        const block = html("article", "module-site");
-        block.dataset.edge = site.edgeId;
-        const caller = nodes.get(site.caller), callee = nodes.get(site.callee);
-        block.append(html("strong", "", caller.qualname + " → " + callee.qualname));
-        if (site.kind === "handles") block.append(html("p", "subtle", "入口绑定处理函数"));
-        if (site.conditions.length) {
-          block.append(html("h4", "", "源码中的触发条件"));
-          for (const condition of site.conditions) {
-            block.append(html("p", "condition", condition.text), readingAnchor(condition));
-          }
-        } else if (site.kind !== "handles")
-          block.append(html("p", "subtle", "执行到此处时调用；此前的返回或异常可能提前结束流程。"));
-        block.append(html("h4", "", site.kind === "handles" ? "绑定位置" : "调用位置"),
-          proof(site, true), action("在图中定位 " + caller.qualname, "text-btn", () => locateSymbol(caller, site)));
-        list.append(block);
+        list.append(callSiteEvidence(site));
       });
       return true;
     }
@@ -1962,6 +2275,7 @@
     if (!module) return false;
     body.append(html("h3", "module-title", module.label));
     if (module.basis) body.append(html("p", "subtle", module.basis));
+    if (module.groupId) showGroupEvidence(body, module.label);
     body.append(action("展开模块内部关系图", "relation-row", () => enterModule(id)));
     const related = [...moduleLinks.values()].filter(r => r.source === id || r.target === id);
     body.append(heading("模块协作", related.length));
@@ -1994,6 +2308,61 @@
       panel.append(item);
     });
     $("diag-dialog").showModal();
+  }
+  function bindClaimComparison() {
+    if (offline) return;
+    const button = $("compare-graph"), dialog = $("compare-dialog"), input = $("previous-graph");
+    const status = $("compare-status"), result = $("compare-result");
+    const labels = {unchanged: "引用仍匹配", moved: "位置移动", changed: "实现有变化",
+      missing: "原证据缺失", unresolved: "需人工定位"};
+    button.hidden = false;
+    button.onclick = () => dialog.showModal();
+    $("compare-close").onclick = () => dialog.close();
+    function showRef(parent, ref) {
+      parent.append(html("p", "reading-text", labels[ref.status] + " · " + ref.reason));
+      const old = html("details", "reading-citations");
+      old.append(html("summary", "", "旧图 · " + ref.old.file + " L" + ref.old.line + "–" + ref.old.end),
+        html("pre", "", ref.oldText));
+      for (const condition of ref.oldConditions || [])
+        old.append(html("p", "condition", condition.file + " L" + condition.line + " · " + condition.text));
+      parent.append(old);
+      if (ref.new) {
+        parent.append(proof(ref.new));
+        const target = sourceNode(ref.new.file, ref.new.line);
+        if (target) parent.append(action("在当前图中定位", "text-btn", () => {
+          dialog.close();
+          locateSymbol(target, ref.new);
+        }));
+      }
+      for (const condition of ref.newConditions || [])
+        parent.append(html("p", "condition", condition.text), proof(condition));
+    }
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      input.disabled = true;
+      result.replaceChildren();
+      status.textContent = "正在用当前源码核对 " + file.name + "…";
+      try {
+        const report = await api("semantics/compare", "POST", {previous: await file.text()});
+        status.textContent = "旧图 #" + report.previousSnapshot.slice(0, 9) + " → 当前 #" +
+          report.currentSnapshot.slice(0, 9) + " · " + Object.entries(labels)
+            .map(([key, label]) => label + " " + report.counts[key]).join("，");
+        const needsReview = c => ["changed", "missing", "unresolved"].includes(c.status);
+        const claims = [...report.claims].sort((a, b) => Number(needsReview(b)) - Number(needsReview(a)));
+        series(result, claims, claim => {
+          const item = html("details");
+          item.append(html("summary", "", labels[claim.status] + " · " + claim.text));
+          for (const ref of claim.refs) showRef(item, ref);
+          result.append(item);
+        });
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        input.value = "";
+        input.disabled = false;
+      }
+    };
   }
   function offlineNotes(notes) {
     localStorage.setItem(
@@ -2116,10 +2485,16 @@
           "article",
           "message " + (m.role === "user" ? "user" : "assistant"),
         );
-        card.append(
-          html("strong", "", m.role === "user" ? "你" : "模型"),
-          html("p", "", m.content),
-        );
+        card.append(html("strong", "", m.role === "user" ? "你" : "模型"));
+        const plain = html("p", "chat-plain", m.content);
+        if (m.role === "assistant" && !m.needsRetry) {
+          const reply = html("div", "chat-markdown");
+          reply.append(plain);
+          card.append(reply);
+          import("/assets/chat-markdown.js")
+            .then(({renderMarkdown}) => reply.replaceChildren(renderMarkdown(m.content)))
+            .catch(() => {}); // The original reply stays readable if the renderer fails to load.
+        } else card.append(plain);
         const previous = thread.messages[i - 1];
         if (m.needsRetry && previous?.role === "user" && !offline && state.llm?.configured) {
           if (retryError?.thread === currentThread && retryError.id === m.id) {
@@ -2360,6 +2735,15 @@
     open.add(scope.id);
     $("connection").textContent = offline ? "离线快照" : "本地工作区";
     bindModelSettings();
+    bindClaimComparison();
+    refreshLocalHistory();
+    $("local-history").onchange = e => {
+      const item = graph.localBusinessViews.find(value => value.id === e.target.value);
+      if (item) openLocal(item);
+      else if (view === "local") leaveLocal();
+    };
+    $("generate-local").onclick = generateLocal;
+    $("local-neighbors").onchange = () => { localError = ""; updateLocalTools(); };
     $("export").hidden = offline;
     $("review-link").hidden = offline || !graph.hasReview;
     $("snapshot").textContent = "#" + String(graph.snapshot).slice(0, 9);
@@ -2367,7 +2751,11 @@
     document.title = graph.name + " · How2Trust";
     $("diag-count").textContent = graph.diagnostics.length;
     $("diagnostics").onclick = () => showDiagnostics(graph.diagnostics);
-    $("root-layer").onchange = () => render();
+    $("root-layer").onchange = () => {
+      setScope(productRoot.id);
+      selectScopeInView();
+      render();
+    };
     $("generate-semantics").onclick = $("generation-retry").onclick = generateBusinessGraph;
     $("generation-settings").onclick = () => openModelSettings("semantics");
     $("diag-close").onclick = () => $("diag-dialog").close();
@@ -2376,7 +2764,8 @@
       navigate(graph.tree.id);
     };
     $("up").onclick = () => {
-      if (!moduleDrill) navigate(parent.get(scope.id));
+      if (view === "local") leaveLocal();
+      else if (!moduleDrill) navigate(parent.get(scope.id));
       else if (view === "module") returnToCollaboration();
       else showModuleView("module");
     };
@@ -2390,6 +2779,8 @@
       renderTree();
     };
     function selectView(next) {
+        if (graph.localOnly) return;
+        leaveLocal(false);
         if (moduleDrill) {
           if (next === "class" || next === "call") return showModuleView(next);
           if (next === "collaboration") return returnToCollaboration();
@@ -2435,8 +2826,12 @@
     };
     bindCanvas();
     bindFullscreen();
-    render();
+    $("views").hidden = !!graph.localOnly;
+    const initialLocal = graph.localBusinessViews?.find(item => item.id === graph.initialLocalView);
+    if (initialLocal) openLocal(initialLocal);
+    else render();
     function openLinkedSource() {
+      if (graph.localOnly) return;
       const location = new URLSearchParams(window.location.hash.slice(1));
       if (location.get("settings") === "models") {
         if (!modelDialog().open) openModelSettings();

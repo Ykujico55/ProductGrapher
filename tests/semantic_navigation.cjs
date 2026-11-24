@@ -70,13 +70,20 @@ async function inspect(page, graph, semantics, methodId) {
   assert.equal(await drawing.locator(".graph-node").count(), 2);
   assert.equal(await card(group.label).count(), 1);
   assert.equal(await card("履约存储").count(), 0);
-  assert.ok(await page.locator("#tree").getByRole("button",{name:"履约存储",exact:true}).isVisible());
+  const internalInTree = page.locator("#tree").getByRole("button",{name:"履约存储",exact:true});
+  assert.equal(await internalInTree.count(), 0);
+  await layer.selectOption("all");
+  assert.equal(await drawing.locator(".graph-node").count(), semantics.groups.length + 1);
+  assert.ok(await internalInTree.isVisible());
   await layer.selectOption("internal");
   assert.equal(await card(group.label).count(), 0);
   assert.equal(await card("履约存储").count(), 1);
+  assert.ok(await internalInTree.isVisible());
   await layer.selectOption("source");
   assert.equal(await card("源码模块").count(), 1);
   assert.equal(await card(group.label).count(), 0);
+  assert.ok(await page.locator("#tree").getByRole("button", {name:"源码模块",exact:true}).isVisible());
+  assert.equal(await page.getByRole("button", {name:"测试与夹具",exact:true}).count(), 0);
   await layer.selectOption("business");
   const claim = reading.locator(".reading-claim").filter({hasText:"订单可分批配送"});
   await claim.getByRole("button", {name:/store\.py · L139/}).click();
@@ -241,6 +248,8 @@ async function main() {
     assert.equal(await page.locator("#root-layer").inputValue(), "business");
     assert.equal(await page.locator('#root-layer option[value="internal"]').count(), 0);
     assert.equal(await page.locator("#drawing .graph-node").count(), oldGuide.groups.length + 1);
+    await page.locator("#root-layer").selectOption("source");
+    assert.ok(await page.locator("#drawing").getByRole("button", {name:"源码模块",exact:true}).isVisible());
     assert.deepEqual(errors, []);
     console.log("Semantic navigation passed offline and online: capability, entry, class, actual call edge and cited source. Shared notes verified across business and static entry paths.");
   } finally {

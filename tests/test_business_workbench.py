@@ -101,7 +101,9 @@ class BusinessWorkbenchTests(unittest.TestCase):
     def test_internal_responsibilities_merge_without_multiple_entry_groups(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            (root / "work.py").write_text("def read(): pass\ndef restore(): read()\ndef run(): restore()\n")
+            (root / "work.py").write_text(
+                "def read(): return b'saved'.decode()\ndef restore():\n    content = read()\n"
+                "    return content.splitlines()\ndef run(): restore()\n")
             graph = build_graph(root)
         names = {"read": "读取存档", "restore": "存档读取", "run": "作业编排"}
         items = [{"nodeId": n["id"], "capability": names[n["label"]], "text": n["label"], "title": n["label"]}
@@ -109,8 +111,10 @@ class BusinessWorkbenchTests(unittest.TestCase):
         def group(_client, data):
             self.assertTrue(data["shared"])
             ids = {row["name"]: row["id"] for row in data["groups"]}
+            members = [g["members"][0]["nodeId"] for g in data["groups"] if g["name"] != "作业编排"]
             return {"domains": [{"name": "作业编排", "groupIds": [ids["作业编排"]]},
-                                {"name": "存档读取", "groupIds": [ids["读取存档"], ids["存档读取"]]}]}
+                                {"name": "存档读取", "groupIds": [ids["读取存档"], ids["存档读取"]],
+                                 "reason": {"text": "解码存档并恢复为文本行。", "nodeIds": members}}]}
         grouped = merge_groups(graph, items, None, group)
         self.assertEqual([i["nodeId"] for i in grouped], [i["nodeId"] for i in items])
         self.assertEqual({i["capability"] for i in grouped}, {"作业编排", "存档读取"})

@@ -12,16 +12,16 @@ How2Trust 把本地 Python 仓库画成可以逐层展开的架构图。先按�
 
 [从源码仓库生成架构图 · 图文操作说明](docs/从源码仓库生成架构图.html)
 
-可以直接打开两个开源项目的离线示例。在 [Cookiecutter](examples/cookiecutter-2.6.0/workbench.html#view=collaboration) 中展开「项目生成编排」查看嵌套模板的递归调用。在 [python-dotenv](examples/python-dotenv-1.1.1/workbench.html) 中搜索 `load_dotenv`，查看读取配置时何时保留已有环境变量。
+可以直接打开开源项目的离线示例。在 [Cookiecutter](examples/cookiecutter-2.6.0/workbench.html#view=collaboration) 中展开「项目生成编排」查看嵌套模板的递归调用。在 [python-dotenv](examples/python-dotenv-1.1.1/workbench.html) 中搜索 `load_dotenv`，查看读取配置时何时保留已有环境变量。要查看索引、社区报告和查询如何协作，可打开 [GraphRAG 生产业务图](examples/graphrag-a398cc38/workbench.html#view=business)，或查阅它的 [56 项 CodeWikiBench 评分](examples/graphrag-a398cc38/scorecard.html)。
 
 ## 运行
 
-Windows 用户可双击 `How2Trust.cmd` 打开示例，或把自己的仓库目录拖到这个文件上。启动器会在默认浏览器中打开工作台。关闭服务窗口即可停止。在命令行运行 `.\How2Trust.cmd --help` 查看所有子命令。
+Windows 用户可双击 `How2Trust.cmd` 打开 How2Trust 自身源码的工作台。分析其他项目时，把仓库目录拖到启动器上。启动器会在默认浏览器中打开工作台。关闭服务窗口即可停止。在命令行运行 `.\How2Trust.cmd --help` 查看所有子命令。
 
 使用 Python 3.10 及以上版本，也可在此项目根目录运行：
 
 ```powershell
-python -m how2trust serve examples/shop --open
+python -m how2trust serve how2trust --open
 python -m how2trust serve "D:\projects\my-app" --port 8765
 ```
 
@@ -33,11 +33,23 @@ python -m how2trust serve "D:\projects\my-app" --port 8765
 
 读长段讲解、问答或源码时，把检查器左边缘的分隔条向左拖宽，向右拖窄。普通视图和全屏共用这个宽度，刷新后仍会沿用。双击分隔条可恢复默认宽度。
 
-1. 打开示例后，依次点击「交易服务」「订单管理」「取消订单」和 DELETE 入口。产品树中的业务名来自示例仓库根目录的 `how2trust.ini`。选中分组可核对配置，选中入口可核对路由声明。
+1. 打开[订单服务离线图](examples/order-map.html)，依次点击「交易服务」「订单管理」「取消订单」和 DELETE 入口。产品树中的业务名来自图中保存的 `how2trust.ini`。选中分组可核对配置，选中入口可核对路由声明。
 2. 切换到「方法调用链」。示例取消操作由 `cancel_order` 调用 `OrderService.cancel`，后者调用 `OrderStore.get` 和 `OrderStore.save`。点击调用线可检查调用发生的位置，点击目标方法可检查其定义。
 3. 切换到「类关系图」查看相关类、继承和可解析的实例属性关联。「分析记录」列出语法错误及无法确定目标的调用。
-4. 用画布的矩形选择工具拖过多个节点，或者按住 Shift 逐个点击。打开「批注」可就当前选区做记录。打开「问答」可向配置的模型提问，继续追问，或重新打开已有会话。
-5. 在大图中可从左侧搜索函数或方法，例如 How2Trust 的 `build_report`。选择结果后查看源码和直接调用，再用「展开完整调用图」查看更多层的调用关系。
+4. 用画布的矩形选择工具拖过多个节点，或者按住 Shift 逐个点击。打开「批注」可就当前选区做记录。在本地服务模式中打开「问答」可向配置的模型提问，继续追问，或重新打开已有会话。
+5. 搜索一个函数或方法后切到「方法调用链」。当前范围超过 12 个节点时，先显示直接调用，点「展开完整调用图」可以沿已解析的调用继续看多层。较小的图直接显示完整范围。方法调用自身会画成标有「递归调用」的回环，两个方法互调会画出两个方向的箭头。箭头可以打开各自的调用行，运行时的递归次数由实际输入决定。[Cookiecutter 的递归调用示例](examples/cookiecutter-2.6.0/workbench.html#file=cookiecutter%2Fmain.py&line=143)
+
+### 只为选区生成业务图
+
+配置好「业务解读」模型后，在静态图中搜索一个方法、选择模块，或用矩形工具圈选多个节点。点画布下方的「生成选区业务图」即可直接解读这些代码。要了解哪些代码直接调用它、它又调用谁，勾选「含直接调用」。工作台按能静态解析的一跳调用和入口绑定补入相关证据。选区超过单次解读预算时，可缩小到具体类或方法。
+
+点业务分组看成员和讲解引用，点箭头核对真实关系与源码行。在局部图中点「导出选区 HTML」，文件只带这张图和本次解读可见的源码行段。重开同一仓库快照后，也可从「已生成的选区业务图」再次查看。需要覆盖全部生产代码时，仍可在「生产业务」页点「一键生成业务图」。
+
+命令行可以重复传入 `--select` 选择文件、符号或图元素 ID。例如，在 How2Trust 根目录运行下面的命令可导出多仓履约项目的取消流程。将 `providers.json` 换成自己的模型配置文件。
+
+```powershell
+python -m how2trust export audit/terra-fulfillment/project --select "dispatchdesk/store.py::Desk.cancel" --include-neighbors --llm-config providers.json -o cancel.html
+```
 
 ## 自定义产品层级
 
@@ -79,7 +91,19 @@ files = shop/storage.py
 
 「多个入口共用的实现」展示静态图中能定位的一至两步调用。展开某个共享方法，可分别从每个入口点到真实调用行，查看调用发生的条件。[多仓项目 · 新版 DeepSeek 交互图](audit/fulfillment-deepseek-improved/architecture.html)
 
+在「模块协作」中点箭头，检查器会把每个调用位置单独列出。展开「可定位的入口路径」可以追到入口绑定和沿途的调用。提前返回或抛错的分支能分别打开判断行和退出行。实参中的条件表达式单独显示其两种取值。点击模块卡片进入内部图后，成员间的调用也可以这样核对。
+
+在新生成的生产业务图或模块详情中展开「查看分组依据」，可以查看每个原分组的源码成员。若模型提议合并，还可查看理由及每个原组提供的入口或实现证据。共同调用的辅助方法单独列出。历史讲解保留生成时记录的信息。
+
+「生产业务」画布标题旁的「首页图层」可切换阅读角度。仓库同时有两类分组时，「入口业务能力」展示包含已识别入口的分组，「内部职责」展示组内没有显式入口的分组，「全部业务分组」显示两者。没有显式入口的库项目会把所有分组列在「业务能力」里。「源码与配置」可在生成业务讲解前使用。切换图层在本机完成，从分组详情切换会回到对应图层的首页。独立 HTML 内嵌导出时的界面，使用新版工作台中的「导出 HTML」即可保存新版界面。
+
+读业务总览时，若一条结论引用了动作行，却把该动作前的条件、退出或取值证据留在引用范围之外，会出现「结论引用未覆盖的源码依据」。展开可直接打开这些源码行。例如，只引用退货后的重试调用时，这里会列出决定是否重试的可售判断。
+
 讲解保存在单独的 JSON，可随相符的静态快照重放。省略 `--semantics` 时，生成命令会使用本机缓存。要为同一项目保留另一版模型解读，可指定新的讲解文件。
+
+**改代码后再次生成。** 用同一路径重新打开仓库，点击「一键生成业务图」，或再次执行带 `--with-semantics` 的生成命令。工作台先在本地重建静态图。模型解读时，同目录的小文件按源码顺序合读，大文件单独处理，超出单批预算时尽量沿类或函数边界切分。每批记录自身源码的 SHA-256 版本。初读、条件复核、分组和总览还会分别比较各自的完整输入，进度条显示整批复用数。
+
+例如，订单入口把发货条件从「已付款」改成「已付款且已锁库存」。即使发货函数一行没改，只要它的解读或复核读到了这处调用，工作台就会更新相应步骤，并按当前源码校验引用。无关的报表批次可以复用。仅修改测试时，只要生产阶段的输入相同，新快照就可以零模型请求生成。模型配置、需求、提示词或引用行号变化也会影响复用。显式指定 `--semantics` 保留冻结版时，新快照请使用同目录下的新文件名。
 
 ## 接入本地或云端模型
 
@@ -103,10 +127,10 @@ files = shop/storage.py
 
 ```powershell
 # 本地服务示例，将 MODEL_NAME 替换为本地已加载模型的名称
-python -m how2trust serve examples/shop --base-url http://127.0.0.1:11434/v1 --model MODEL_NAME
+python -m how2trust serve "D:\projects\my-app" --base-url http://127.0.0.1:11434/v1 --model MODEL_NAME
 
 # 云端服务示例，使用该服务的实际 API 基础地址和模型名称
-python -m how2trust serve examples/shop --base-url https://YOUR-PROVIDER/v1 --model MODEL_NAME --key-env MY_MODEL_KEY
+python -m how2trust serve "D:\projects\my-app" --base-url https://YOUR-PROVIDER/v1 --model MODEL_NAME --key-env MY_MODEL_KEY
 ```
 
 可通过 `HOW2TRUST_BASE_URL` 和 `HOW2TRUST_MODEL` 指定默认值。云端鉴权从启动进程的环境变量读取，默认变量名为 `HOW2TRUST_API_KEY`。选择云端服务后，提问会向该服务发送问题、选区内容、相关历史和按需读取的源码。
@@ -118,12 +142,22 @@ python -m how2trust serve examples/shop --base-url https://YOUR-PROVIDER/v1 --mo
 ## 离线导出和可重复性
 
 ```powershell
-python -m how2trust export examples/shop -o order-map.html --json order-map.json
+python -m how2trust export how2trust -o how2trust-map.html --json how2trust-map.json
 ```
 
 HTML 是独立文件，内含交互界面、图数据、已经索引的源码与分组配置。可以直接用浏览器打开。离线批注保存在当前浏览器的本地存储，问答使用本地服务模式。命令行导出只包含生成结果，本机数据库中的讨论记录单独保存。分享导出文件时，接收者也能阅读内嵌源码。
 
 同一版本的工具和 Python、相同的已索引文件，生成相同的静态图 JSON 和 HTML 字节。带模型解读的导出还需使用同一份已保存讲解才能逐字节复现。重新请求模型可能产生不同措辞。模型解读有独立指纹，不改变静态图的节点、边和快照标识。图中的边记录 `source`、`target`、`kind`、文件及行号，调用边还记录调用表达式。
+
+## 对照新源码核对旧图
+
+用当前仓库启动工作台，点右上角「核对旧图」，选一份带业务总览的旧 HTML 或图 JSON。工作台会按结论列出引用仍匹配、位置移动、实现有变化、原证据缺失和需人工定位的情况。点开一条可比较旧片段与当前实现，再点「在当前图中定位」打开源码。整个核对在本机完成。这里检查的是旧结论已引用的源码、可解析的调用目标和已识别的执行条件。
+
+也可以从命令行保存完整报告。若旧图和旧讲解分别存放，可再传入与旧图快照匹配的 `--semantics 旧讲解.json`。
+
+```powershell
+python -m how2trust check-evidence audit/terra-fulfillment/project --previous audit/fulfillment-deepseek-improved/architecture.html --json order-evidence.json
+```
 
 ## 源码证据的范围
 
@@ -143,3 +177,5 @@ python -m unittest discover -s tests -v
 测试覆盖证据定位、静态解析边界、跨目录的确定性导出、HTML 源码嵌入、批注持久化以及通过本地模拟模型服务完成的多轮检索问答。
 
 已有交付对比报告或检查清单的用户，可查看[交付审阅命令与旧报告操作说明](docs/交付审阅.md)。
+
+参与工作台开发时，可按[开发流程与创新方向参考](docs/开发流程与创新方向参考.md)选择第三方数据。调用条件、分组归并、旧图核对和两套独立基准的首轮实测记录见[源码架构评测](docs/首轮源码架构评测.md)。

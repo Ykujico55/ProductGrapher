@@ -10,7 +10,7 @@ from errno import ENOSPC
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
 from inspect import signature
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from .generation_progress import GenerationProgress
 from .llm import ModelRequestError
@@ -65,6 +65,8 @@ def make_server(graph, discussion, port, review=None, semantics=None, models=Non
         "/": ("index.html", "text/html"),
         "/assets/style.css": ("style.css", "text/css"),
         "/assets/app.js": ("app.js", "text/javascript"),
+        "/assets/chat-markdown.js": ("chat-markdown.js", "text/javascript"),
+        "/assets/vendor/marked.esm.js": ("vendor/marked.esm.js", "text/javascript"),
     }
     if review:
         from .review_html import render_report
@@ -110,7 +112,16 @@ def make_server(graph, discussion, port, review=None, semantics=None, models=Non
             elif path == "/api/models" and models:
                 self.send_json(200, models.describe())
             elif path == "/export.html":
-                self.send_bytes(200, standalone(graph), "text/html")
+                local_ids = parse_qs(urlsplit(self.path).query, keep_blank_values=True).get("local")
+                if local_ids is None:
+                    self.send_bytes(200, standalone(graph), "text/html")
+                else:
+                    from .local_export import local_export_graph
+                    view = next((v for v in graph.get("localBusinessViews", []) if [v["id"]] == local_ids), None)
+                    if view is None:
+                        self.send_json(404, {"error": "当前快照中没有这张选区业务图。"})
+                    else:
+                        self.send_bytes(200, standalone(local_export_graph(graph, view)), "text/html")
             elif path in static:
                 filename, content_type = static[path]
                 self.send_bytes(200, ASSETS.joinpath(filename).read_bytes(), content_type)
@@ -125,7 +136,8 @@ def make_server(graph, discussion, port, review=None, semantics=None, models=Non
                 return
             try:
                 size = int(self.headers.get("Content-Length", "0"))
-                if not 0 < size <= 1_000_000:
+                # A user-selected offline export can contain the full indexed repository.
+                if size <= 0 or (self.path != "/api/semantics/compare" and size > 1_000_000):
                     raise ValueError("无效的请求长度")
                 body = json.loads(self.rfile.read(size))
                 if not isinstance(body, dict):
@@ -135,6 +147,12 @@ def make_server(graph, discussion, port, review=None, semantics=None, models=Non
                 elif self.path == "/api/chat":
                     result = discussion.chat(body.get("targets"), body.get("thread"), body.get("question"),
                                              retry_message_id=body.get("retryMessageId"))
+                elif self.path == "/api/semantics/compare":
+                    from .claim_drift import compare_claim_evidence, read_previous_graph
+                    previous = body.get("previous")
+                    if not isinstance(previous, str):
+                        raise ValueError("请选择旧版工作台 HTML 或架构 JSON 文件。")
+                    result = compare_claim_evidence(read_previous_graph(previous), graph)
                 elif self.path == "/api/models" and models:
                     try:
                         result = models.save(body)
@@ -143,6 +161,18 @@ def make_server(graph, discussion, port, review=None, semantics=None, models=Non
                 elif self.path == "/api/semantics" and semantics:
                     self.generate(body)
                     return
+                elif self.path == "/api/semantics/local" and semantics:
+                    from .local_business import LocalSelectionError
+                    try:
+                        with models.lock if models else nullcontext():
+                            store = models.store if models else semantics
+                            result = store.generate_local(body.get("targets"), body.get("includeNeighbors", False))
+                    except LocalSelectionError:
+                        raise
+                    except (ValueError, OSError, RuntimeError) as exc:
+                        status, message = generation_error(exc, "local")
+                        self.send_json(status, {"error": message})
+                        return
                 else:
                     self.send_json(404, {"error": "路径不存在"})
                     return

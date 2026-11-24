@@ -1,6 +1,8 @@
 """Generate a separately versioned, source-cited reading guide for a graph snapshot."""
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+from itertools import islice
 import json
 import os
 from pathlib import Path
@@ -10,14 +12,14 @@ import tempfile
 from .capabilities import capability_groups, shared_calls
 from .project import canonical, digest
 from .source_roles import source_role
-from .semantic_evidence import review_material
+from .semantic_evidence import needs_batch_review, review_material
 
 
 SCHEMA = "how2trust.semantics.v1"
-PROMPT_VERSION = "12"
-GROUP_VERSION = "8"
+PROMPT_VERSION = "15"
+GROUP_VERSION = "13"
 DRAFT_VERSION = "7"
-UPGRADABLE_OVERVIEWS = {GROUP_VERSION, "9", "10", "11"}
+UPGRADABLE_OVERVIEWS = {GROUP_VERSION, "8", "9", "10", "11", "12", "14"}
 PRODUCTION_VERSIONS = {DRAFT_VERSION, PROMPT_VERSION, *UPGRADABLE_OVERVIEWS}
 BATCH_CHARS = 42_000
 INSTRUCTIONS = """为第一次看仓库的读者解释实际的产品架构：它服务哪些使用者，关键业务能力如何分工，
@@ -61,6 +63,9 @@ VERIFY_INSTRUCTIONS = """复读这批原始源码，对照 draft 检查业务架
 重点核对用到哪些对象、量词和空集合，成功后一定调用还是条件分支才调用。若操作针对一条已完成的
 明细而其他明细还未完成，请根据代码明确写出这种情况下整单能否继续操作、整单状态是否变化。
 共同触发的流程需补每个触发点及接收方条件。只能引用本次 sources 提供的 file、line、end。
+actionFacts 按目标和调用位置列出从源码提取的条件。逐个调用点核对前序退出和所在分支。
+“为真时取…，为假时取…”描述实参取值。分别检查两个取值是否都执行调用，避免将取值条件写成调用条件。
+若依赖 assert，区分启用断言时的退出和 Python 优化模式下跳过检查。
 优先核查配置/参数到底传给哪个调用、由哪个分支消费，不能把相邻流程的输入合写。
 凡使用“所有”“已有时直接跳过”等表述，回到调用方查找旁路分支；将旁路例外和适用范围保留在同一条总览内。
 同一事实在节点与总览出现时，逐项对照两者的限定条件。来源不全时将文字明确限定于被调函数。
@@ -93,10 +98,10 @@ def _source_batches(graph, limit):
             edges_at[edge["file"], edge["line"]].append(
                 [edge[k] for k in ("source", "kind", "target", "file", "line")])
 
-    nodes, relations, blocks, size = [], [], [], 0
     for file, source in sorted(graph["files"].items()):
         if not (file.endswith(".py") or file == "how2trust.ini"):
             continue
+        nodes, relations, blocks, size = [], [], [], 0
         lines = source.splitlines()
         costs = [0]
         for line, code in enumerate(lines, 1):
@@ -118,8 +123,8 @@ def _source_batches(graph, limit):
             nodes.extend(symbols)
             relations.extend(edges)
             size += cost
-    if blocks:
-        yield _material(nodes, relations, blocks)
+        if blocks:
+            yield _material(nodes, relations, blocks)
 
 
 def _material(nodes, relations, blocks):
@@ -128,14 +133,47 @@ def _material(nodes, relations, blocks):
     return {"nodes": nodes, "relations": relations, "sources": sources}
 
 
+def _source_groups(graph):
+    # Group by directory, without allowing a large module to shift batches
+    # after it. Small sibling modules share a request in stable source order.
+    limit = BATCH_CHARS * 2 // 3
+    packages = defaultdict(list)
+    for batch in _source_batches(graph, limit):
+        directory = batch["sources"][0]["file"].rpartition("/")[0]
+        packages[directory].append(batch)
+    def combine(rows):
+        return {k: [row for part in rows for row in part[k]] for k in rows[0]}
+    for parts in packages.values():
+        sizes = [len(canonical(part)) for part in parts]
+        if len(packages) == 1 and sum(sizes) <= BATCH_CHARS:
+            yield combine(parts)
+            continue
+        pieces = Counter(part["sources"][0]["file"] for part in parts)
+        pending, size = [], 0
+        for part, cost in zip(parts, sizes):
+            file = part["sources"][0]["file"]
+            standalone = pieces[file] > 1 or cost > limit
+            if pending and (standalone or size + cost > limit):
+                yield combine(pending)
+                pending, size = [], 0
+            if standalone:
+                yield part
+            else:
+                pending.append(part)
+                size += cost
+        if pending:
+            yield combine(pending)
+
+
 def _batches(graph):
-    # Reserve room for out-of-file implementations on larger repositories. Small
-    # repositories still fit into one request, with all original source present.
-    batches = list(_source_batches(graph, BATCH_CHARS * 2 // 3))
-    if len(batches) == 2:
-        combined = {k: batches[0][k] + batches[1][k] for k in batches[0]}
-        if len(canonical(combined)) <= BATCH_CHARS:
-            batches = [combined]
+    return (batch for _, batch in _versioned_batches(graph))
+
+
+def _versioned_batches(graph):
+    batches = list(_source_groups(graph))
+    # Record the version of the block's own sources before adding any material
+    # from callers, callees or the project README.
+    versions = [digest(batch["sources"]) for batch in batches]
     readmes = sorted(path for path in graph["files"] if path.casefold() in {"readme.md", "readme.rst", "readme.txt"})
     if readmes:
         path = readmes[0]
@@ -149,7 +187,7 @@ def _batches(graph):
             if excerpt and len(canonical(batch)) + cost <= BATCH_CHARS:
                 batch.update(material)
     if len(batches) < 2:
-        yield from batches
+        yield from zip(versions, batches)
         return
 
     targets = {n["id"]: n for n in graph["nodes"]}
@@ -162,9 +200,9 @@ def _batches(graph):
             if e["kind"] == "calls" and targets[e["source"]]["kind"] in {"function", "method"}:
                 incoming[e["target"]].append(row)
     files = {name: src.splitlines() for name, src in graph["files"].items() if name.endswith(".py")}
-    for batch in batches:
+    for version, batch in zip(versions, batches):
         _add_implementations(batch, targets, outgoing, incoming, files)
-        yield batch
+        yield version, batch
 
 
 def _add_implementations(batch, targets, outgoing, shared_callers, files):
@@ -279,14 +317,27 @@ def _response_object(response):
     raise ValueError("模型未返回有效的业务讲解 JSON 对象，请检查模型配置或重新生成。")
 
 
-def _ask(client, payload, validate=None):
+def _ask(client, payload, validate=None, *, cache=None, on_miss=None):
     instructions = VERIFY_INSTRUCTIONS if payload["task"] == "verify" else INSTRUCTIONS
+    if payload["task"] == "local_business":
+        from .local_business import INSTRUCTIONS as local_instructions
+        instructions = local_instructions
     if payload["task"] == "domains":
         from .business_groups import GROUP_INSTRUCTIONS
         instructions = GROUP_INSTRUCTIONS
     if payload["task"] == "review_overview":
         from .overview_review import INSTRUCTIONS as overview_instructions
         instructions = overview_instructions
+    path = cache.path(instructions, payload) if cache is not None else None
+    if path is not None:
+        saved = cache.load(path)
+        if saved is not None:
+            try:
+                return validate(saved) if validate else saved
+            except ValueError:
+                pass  # Validate node IDs and source anchors against the current graph.
+    if on_miss is not None:
+        on_miss()
     request = payload
     for attempt in range(3):
         try:
@@ -294,7 +345,10 @@ def _ask(client, payload, validate=None):
             response = complete([{"role": "system", "content": instructions},
                                  {"role": "user", "content": canonical(request)}])
             data = _response_object(response)
-            return validate(data) if validate else data
+            result = validate(data) if validate else data
+            if path is not None:
+                cache.save(path, data)
+            return result
         except (ValueError, RuntimeError) as exc:
             http_status = getattr(exc.__cause__, "code", None)
             if attempt == 2 or (isinstance(http_status, int) and 400 <= http_status < 500
@@ -349,7 +403,7 @@ def _overview(claims):
     return {"claims": claims, "text": " ".join(claim["text"] for claim in claims), "refs": list(refs.values())}
 
 
-def _project_overview(batches, client, project):
+def _project_overview(batches, client, project, cache=None):
     if len(batches) == 1:
         return _overview(batches[0])
     candidates = [claim for claims in batches for claim in claims]
@@ -363,7 +417,7 @@ def _project_overview(batches, client, project):
             raise ValueError("总览需选择来自源码批次的有效结论编号")
         return _overview([candidates[i - 1] for i in dict.fromkeys(ids)])
     return _ask(client, {"task": "overview", "project": project, "claims": [
-        {"id": i, **claim} for i, claim in enumerate(candidates, 1)]}, select)
+        {"id": i, **claim} for i, claim in enumerate(candidates, 1)]}, select, cache=cache)
 
 
 def _node_anchors(graph):
@@ -460,7 +514,7 @@ def _production_graph(graph):
     return {**graph, "files": files, "nodes": nodes, "edges": edges}
 
 
-def _explain_batch(client, graph, material, anchors, checkpoint, notify):
+def _explain_batch(client, graph, material, anchors, checkpoint, notify, cache=None, source_version=None):
     allowed = {n["id"] for n in material["nodes"]}
     evidence = _ranges(material["sources"])
     def read_draft(data):
@@ -470,69 +524,86 @@ def _explain_batch(client, graph, material, anchors, checkpoint, notify):
     def read_review(data):
         claims, items = read_draft(data["draft"])
         if "review" in data:
-            review = review_material(graph, material, claims, items, BATCH_CHARS)
+            # Older verified replies may cite the surrounding lines that the old
+            # source-only budget offered. Reconstruct those original ranges.
+            review = review_material(graph, material, claims, items, BATCH_CHARS, legacy="reviewVersion" not in data,
+                                     incoming_evidence=data.get("reviewVersion", 0) >= 3)
             return _apply_revisions(data["review"], claims, items, _ranges(review["sources"]), anchors)
         return claims, items
 
     path = None if checkpoint is None else Path(checkpoint) / (digest(material) + ".json")
+    generation = generation_key(graph, client, material.get("requirements", "")) if path and client is not None else None
+    record = None
     if path:
         try:
             existing = json.loads(path.read_text("utf-8"))
-            if existing["fingerprint"] == digest(existing["batch"]):
-                result = read_review(existing["batch"])
-                notify("cached")
-                return result
-        except (OSError, ValueError, KeyError):
+            if (existing["fingerprint"] == digest(existing["batch"])
+                    and existing.get("generation", generation) == generation
+                    and existing.get("sourceVersion", source_version) == source_version):
+                saved = existing["batch"]
+                claims, items = read_review(saved)
+                if "review" in saved or not (claims or items) or not needs_batch_review(graph, material):
+                    notify("cached")
+                    return claims, items
+                # This draft predates review of inline choices and assertions.
+                # Send just its missing verification request and keep the draft.
+                record = {"draft": saved["draft"]}
+                check = True
+        except (OSError, ValueError, KeyError, TypeError):
             pass  # A missing or unreadable checkpoint can be regenerated from source.
-    payload = {"task": "explain", **material}
-    notify("reading")
-    claims, items = _ask(client, payload, read_draft)
-    record = {"draft": {"overview": {"claims": claims}, "items": items}}
-    # Verify product entries and business statements involving branching behavior.
-    # Plain declarations without control flow need no extra model pass.
-    check = any(n["kind"] == "entry" for n in material["nodes"]) or any(
-        re.search(r"(?m)^\d+ \| +(?:if|elif|except|match|for|while)\b", block["text"])
-        for block in material["sources"]) and any(n["kind"] in {"function", "method"} for n in material["nodes"])
-    if (claims or items) and check:
-        notify("reviewing")
+    sent = False
+    def sending(phase):
+        nonlocal sent
+        sent = True
+        notify(phase)
+
+    if record is None:
+        claims, items = _ask(client, {"task": "explain", **material}, read_draft,
+                             cache=cache, on_miss=lambda: sending("reading"))
+        record = {"draft": {"overview": {"claims": claims}, "items": items}}
+        check = bool(claims or items) and needs_batch_review(graph, material)
+    if check:
         review = review_material(graph, material, claims, items, BATCH_CHARS)
         refs = _ranges(review["sources"])
         def check_edits(edits):
             revised = _apply_revisions(edits, claims, items, refs, anchors)
             return edits, revised
-        numbered = [{"id": i, **c} for i, c in enumerate(claims, 1)]
-        record["review"], (claims, items) = _ask(client, {**review, "task": "verify",
-            "draft": {"claims": numbered, "items": items}}, check_edits)
+        record["review"], (claims, items) = _ask(client, review, check_edits,
+                                                 cache=cache, on_miss=lambda: sending("reviewing"))
+        record["reviewVersion"] = 3
     if path:
         temp = None
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as out:
                 temp = Path(out.name)
-            temp.write_text(canonical({"batch": record, "fingerprint": digest(record)}), encoding="utf-8")
+            resume = {"batch": record, "fingerprint": digest(record),
+                      "sourceVersion": source_version, "generation": generation}
+            temp.write_text(canonical(resume), encoding="utf-8")
             os.replace(temp, path)
         except OSError:
             pass  # This optional resume file must not block exporting the validated guide.
         finally:
             if temp is not None:
                 temp.unlink(missing_ok=True)
-    notify("done")
+    notify("done" if sent else "cached")
     return claims, items
 
 
-def generate_semantics(graph, client, requirements="", *, checkpoint=None, progress=None):
+def generate_semantics(graph, client, requirements="", *, checkpoint=None, progress=None, request_cache=None):
     """Read only indexed source, never mutate the underlying deterministic graph."""
     production = _production_graph(graph)
     anchors = _node_anchors(production)
-    batches = [{"project": graph["name"], "requirements": requirements, **batch} for batch in _batches(production)]
+    batches = [(version, {"project": graph["name"], "requirements": requirements, **batch})
+               for version, batch in _versioned_batches(production)]
     def explain(numbered):
-        number, batch = numbered
+        number, (version, batch) = numbered
         files = list(dict.fromkeys(row["file"] for row in batch["sources"]))[:3]
         def notify(phase):
             if progress is not None:
                 progress("batches", batch=number, total=len(batches), phase=phase, files=files)
         try:
-            return _explain_batch(client, production, batch, anchors, checkpoint, notify)
+            return _explain_batch(client, production, batch, anchors, checkpoint, notify, request_cache, version)
         except Exception as exc:
             if progress is not None:
                 # Several workers can fail. The HTTP error should identify the
@@ -549,12 +620,12 @@ def generate_semantics(graph, client, requirements="", *, checkpoint=None, progr
         results = list(map(explain, enumerate(batches, 1)))
     items = [item for _, rows in results for item in rows]
     overviews = [claims for claims, _ in results]
-    eligible = sum(len(b["nodes"]) for b in batches)
+    eligible = sum(len(b["nodes"]) for _, b in batches)
     if progress is not None:
         progress("overview")
     if not items:
         raise ValueError("没有生成可定位到源码的业务节点讲解")
-    overview = _project_overview(overviews, client, graph["name"])
+    overview = _project_overview(overviews, client, graph["name"], request_cache)
     artifact = {"schema": SCHEMA, "snapshot": graph["snapshot"], "model": client.model,
                 "provider": client.provider, "promptVersion": DRAFT_VERSION,
                 "generationFingerprint": generation_key(graph, client, requirements, DRAFT_VERSION),
@@ -567,22 +638,23 @@ def generate_semantics(graph, client, requirements="", *, checkpoint=None, progr
     if paths:
         artifact["sharedCalls"] = paths
     artifact["fingerprint"] = digest(artifact)
-    return finalize_capabilities(graph, artifact, client, requirements, progress=progress)
+    return finalize_capabilities(graph, artifact, client, requirements, progress=progress, request_cache=request_cache)
 
 
-def finalize_capabilities(graph, draft, client, requirements="", *, progress=None):
+def finalize_capabilities(graph, draft, client, requirements="", *, progress=None, request_cache=None):
     """Group the source-checked business explanations without rewriting their evidence."""
     validate_semantics(graph, draft)
     version = draft.get("promptVersion")
     if (version not in {"5", DRAFT_VERSION} or
             draft.get("generationFingerprint") != generation_key(graph, client, requirements, version)):
         raise ValueError("整理业务域需使用原讲解、同一模型配置与需求")
-    from .business_groups import merge_groups
+    from .business_groups import group_decisions
     if progress is not None:
         progress("grouping")
     items = draft["items"]
     result = dict(draft)
-    result["items"] = merge_groups(graph, items, client, _ask)
+    scope = graph if version == "5" else _production_graph(graph)
+    result["items"], result["groupEvidence"] = group_decisions(scope, items, client, cache=request_cache)
     if "groups" in result or any(i.get("capability") for i in result["items"]):
         result["groups"] = capability_groups(graph, result["items"])
     target_version = "6" if version == "5" else GROUP_VERSION
@@ -590,10 +662,12 @@ def finalize_capabilities(graph, draft, client, requirements="", *, progress=Non
                   sourceGuide={"promptVersion": version, "fingerprint": draft["fingerprint"]})
     result.pop("fingerprint")
     result["fingerprint"] = digest(result)
-    return upgrade_overview(graph, result, client, requirements, progress=progress) if target_version == GROUP_VERSION else result
+    if target_version == GROUP_VERSION:
+        return upgrade_overview(graph, result, client, requirements, progress=progress, request_cache=request_cache)
+    return result
 
 
-def upgrade_overview(graph, existing, client, requirements="", *, progress=None):
+def upgrade_overview(graph, existing, client, requirements="", *, progress=None, checkpoint=None, request_cache=None):
     """Recheck an already grouped guide against the same source and model profile."""
     validate_semantics(graph, existing)
     source_version = existing.get("promptVersion")
@@ -601,14 +675,21 @@ def upgrade_overview(graph, existing, client, requirements="", *, progress=None)
             or existing.get("requirementsFingerprint") != digest(requirements)
             or existing.get("generationFingerprint") != generation_key(graph, client, requirements, source_version)):
         raise ValueError("总览复核需要同一源码快照、模型配置和需求生成的业务图。")
+    if source_version != GROUP_VERSION:
+        # Earlier guides kept only the final group names. Rebuild the original
+        # proposals from verified source batches when regeneration is requested.
+        return generate_semantics(graph, client, requirements, checkpoint=checkpoint, progress=progress,
+                                  request_cache=request_cache)
     production = _production_graph(graph)
     overview = existing["overview"]
     from .overview_review import integrate_overview, spans_control_paths
-    review_needed = spans_control_paths(production, overview) and len(list(_batches(production))) > 1
+    review_needed = (spans_control_paths(production, overview)
+                     and len(list(islice(_source_groups(production), 2))) == 2)
     if review_needed:
         if progress is not None:
             progress("review")
-        revised = integrate_overview(production, overview, existing["items"], _ask, client, BATCH_CHARS, _ranges, _explanation)
+        revised = integrate_overview(production, overview, existing["items"], partial(_ask, cache=request_cache),
+                                     client, BATCH_CHARS, _ranges, _explanation)
         overview = _overview(revised)
     result = {**existing, "promptVersion": PROMPT_VERSION,
               "generationFingerprint": generation_key(graph, client, requirements),
@@ -649,6 +730,9 @@ def validate_semantics(graph, artifact):
     if ("groups" in artifact or cited) and (
             artifact.get("groups", []) != capability_groups(graph, items)):
         raise ValueError("业务职责分组与已引用的图节点不符")
+    if "groupEvidence" in artifact or version in {GROUP_VERSION, "14", PROMPT_VERSION}:
+        from .business_groups import validate_group_evidence
+        validate_group_evidence(scope, items, artifact.get("groupEvidence"))
     if ("sharedCalls" in artifact or cited) and (
             artifact.get("sharedCalls", []) != shared_calls(scope, items)):
         raise ValueError("共享调用路径与源码快照中的调用关系不符")

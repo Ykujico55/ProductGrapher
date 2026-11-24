@@ -21,7 +21,8 @@ class WorkbenchModels:
         self.store = store
         guide = store.graph.get("semantics")
         if guide and guide.get("generationFingerprint") != store.generation_key:
-            self.store = SemanticStore(store.graph, store.client, store.requirements, store.cache_dir)
+            self.store = SemanticStore(store.graph, store.client, store.requirements, store.cache_dir,
+                                       repository=store.repository)
             self.store.replace_current = True
         self.discussion = discussion
         self.lock = Lock()
@@ -66,7 +67,8 @@ class WorkbenchModels:
         next_store = self.store
         if "semantics" in clients:
             old = self.store
-            candidate = SemanticStore(old.graph, clients["semantics"], old.requirements, old.cache_dir)
+            candidate = SemanticStore(old.graph, clients["semantics"], old.requirements, old.cache_dir,
+                                      repository=old.repository)
             if candidate.generation_key != old.generation_key or (
                     old.graph.get("semantics") and old.graph["semantics"].get("generationFingerprint") != candidate.generation_key):
                 candidate.replace_current = True

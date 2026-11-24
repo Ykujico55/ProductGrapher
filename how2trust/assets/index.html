@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="#" id="home"><i class="brandmark" data-icon="branch"></i>How2Trust</a>
     <span class="head-divider"></span><span class="app-label">架构工作台</span>
-    <span class="top-spacer"></span><button id="model-settings" type="button" class="export-link" aria-haspopup="dialog">模型设置</button><a id="review-link" class="export-link" href="/review" hidden>交付验收</a><a id="export" class="export-link" href="/export.html" download="how2trust.html" hidden><i data-icon="download"></i>导出 HTML</a><span class="connection" id="connection">正在加载</span>
+    <span class="top-spacer"></span><button id="compare-graph" type="button" class="export-link" aria-haspopup="dialog" hidden>核对旧图</button><button id="model-settings" type="button" class="export-link" aria-haspopup="dialog">模型设置</button><a id="review-link" class="export-link" href="/review" hidden>交付验收</a><a id="export" class="export-link" href="/export.html" download="how2trust.html" hidden><i data-icon="download"></i>导出 HTML</a><span class="connection" id="connection">正在加载</span>
     <span class="snapshot" id="snapshot"></span>
   </header>
   <main class="workspace">
@@ -69,6 +69,13 @@
           </div>
         </div>
         <div class="canvas-foot"><span><i data-icon="pointer"></i><span id="canvas-hint">点击模块展开</span></span><span id="selection-count"></span></div>
+        <div id="local-tools" hidden>
+          <div id="local-actions"><button type="button" class="light-btn" id="generate-local">生成选区业务图</button>
+            <label><input type="checkbox" id="local-neighbors">含直接调用</label></div>
+          <select id="local-history" class="light-btn" aria-label="已生成的选区业务图" hidden></select>
+          <progress id="local-progress" aria-label="正在生成选区业务图" hidden></progress>
+          <span id="local-status" role="status"></span>
+        </div>
       </section>
     </section>
     <aside class="inspector" id="graph-inspector">
@@ -81,6 +88,13 @@
     </aside>
   </main>
   <dialog id="diag-dialog"><div class="dialog-title"><h2>分析记录</h2><button class="icon-btn" id="diag-close" aria-label="关闭"><i data-icon="close"></i></button></div><div id="diag-list"></div></dialog>
+  <dialog id="compare-dialog" aria-labelledby="compare-title">
+    <div class="dialog-title"><h2 id="compare-title">核对旧图中的业务结论</h2><button type="button" class="icon-btn" id="compare-close" aria-label="关闭核对结果"><i data-icon="close"></i></button></div>
+    <label for="previous-graph">选择含业务讲解的工作台 HTML 或架构 JSON</label>
+    <input id="previous-graph" type="file" accept=".html,.json">
+    <p id="compare-status" role="status"></p>
+    <div id="compare-result"></div>
+  </dialog>
   <dialog id="model-dialog" aria-labelledby="model-title">
     <div class="dialog-title"><h2 id="model-title">模型设置</h2><button class="icon-btn" id="model-close" aria-label="关闭模型设置"><i data-icon="close"></i></button></div>
     <p id="model-offline" hidden>这是离线快照。将源码目录拖到 How2Trust.cmd，在打开的本地工作台右上角点「模型设置」，即可配置模型并提问。</p>

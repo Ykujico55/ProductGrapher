@@ -20,10 +20,33 @@ const dsml = [
   '</｜｜DSML｜｜ invoke>',
   '</｜｜DSML｜｜ calls>',
 ].join("\n");
-const question = "这个示例如何读取迁移状态？";
-const answer = `有记录时返回迁移状态，状态值是 migrated once。[${statusFile}:L1]`;
+const question = "这个示例如何读取 **迁移状态**？";
+const fieldName = "last_successfully_applied_migration_before_synchronization";
+const codeLine = `return ${fieldName}("<em>ready</em>")`;
+const answer = [
+  "## 迁移结果", "",
+  `有记录时返回 **已迁移**，状态值是 \`migrated once\`。[${statusFile}:L1]`, "",
+  "- 读取记录", "  - 检查状态", "- 返回结果", "",
+  "```python", codeLine, "```", "",
+  "| 输入 | 返回值 |", "| --- | --- |", "| 空记录 | None |", `| 字段 | ${fieldName} |`, "",
+  "[SQLite 文档](https://docs.python.org/3/library/sqlite3.html)", "",
+  '<button id="reply-html-test">示例标签</button>',
+].join("\n");
 const followup = "没有记录时呢？";
 const nextAnswer = `没有记录时返回 None。[${file}:L5]`;
+
+async function checkMarkdown(card) {
+  await card.getByRole("heading", {name:"迁移结果", exact:true}).waitFor();
+  assert.equal(await card.locator("p strong").textContent(), "已迁移");
+  assert.equal(await card.locator("p code").textContent(), "migrated once");
+  assert.equal(await card.locator("ul > li > ul > li").textContent(), "检查状态");
+  assert.equal((await card.locator("pre > code").textContent()).trimEnd(), codeLine);
+  assert.equal(await card.locator("pre em, #reply-html-test").count(), 0);
+  assert.deepEqual(await card.getByRole("columnheader").allTextContents(), ["输入", "返回值"]);
+  assert.deepEqual(await card.getByRole("cell").allTextContents(), ["空记录", "None", "字段", fieldName]);
+  assert.equal(await card.getByRole("link", {name:"SQLite 文档"}).getAttribute("href"),
+    "https://docs.python.org/3/library/sqlite3.html");
+}
 
 async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "how2trust-chat-lookup-"));
@@ -84,7 +107,18 @@ async function main() {
     };
     assert.ok((await ask(question)).ok());
     const card = page.locator(".message.assistant").first();
-    await card.getByText(answer, {exact:true}).waitFor();
+    await checkMarkdown(card);
+    await page.locator(".message.user").getByText(question, {exact:true}).waitFor();
+    const resizer = page.locator("#inspector-resizer");
+    for (let i = 0; i < 4; i++) await resizer.press("ArrowRight");
+    for (const container of [card.locator("pre"), card.locator("table").locator("..")]) {
+      assert.ok(await container.evaluate(el => {
+        el.scrollLeft = 50;
+        return el.scrollLeft > 0;
+      }), "Wide Markdown content should scroll within its own block");
+    }
+    assert.ok(await page.locator("#inspect-content").evaluate(el => el.scrollWidth <= el.clientWidth + 1),
+      "Narrow inspector should not overflow horizontally");
     assert.equal(requests.length, 2, "Expected one local lookup followed by a final answer");
     assert.ok(!requests[0].at(-1).content.includes("migrated once"));
     assert.match(requests[1].at(-1).content, /migrated once/);
@@ -98,13 +132,20 @@ async function main() {
     assert.ok((await ask(followup)).ok());
     await page.locator(".message.assistant").last().getByText(nextAnswer).waitFor();
 
+    async function reopenThread() {
+      await page.reload();
+      await page.locator("#drawing .graph-node").first().waitFor();
+      await page.locator('[data-inspect="chat"]').click();
+      await page.getByLabel("选择历史对话").selectOption(thread.id);
+    }
+    await reopenThread();
+    await checkMarkdown(card);
+
     // Reopen a history in the pre-fix format, complete with a later successful follow-up.
     execFileSync(python, ["-c", "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); " +
       "db.execute(\"UPDATE messages SET content=?,sources='[]' WHERE thread=? AND seq=1\", sys.argv[2:4]); db.commit()",
       db, dsml, thread.id], {windowsHide:true});
-    await page.reload();
-    await page.locator('[data-inspect="chat"]').click();
-    await page.getByLabel("选择历史对话").selectOption(thread.id);
+    await reopenThread();
     const retry = page.getByRole("button", {name:"重新回答此问题"});
     await retry.waitFor();
     assert.ok(!(await page.locator("#inspect-content").innerText()).includes("DSML"));
@@ -122,14 +163,14 @@ async function main() {
     await input.fill(draft);
     const before = requests.length;
     await retry.click();
-    await card.getByText(answer, {exact:true}).waitFor();
+    await checkMarkdown(card);
     assert.equal(await input.inputValue(), draft);
     assert.equal(await retry.count(), 0);
     assert.deepEqual((await state())[0].messages.map(m => m.content), [question, answer, followup, nextAnswer]);
     assert.ok(requests[before].at(-1).content.includes(file));
     assert.ok(!JSON.stringify(requests[before]).includes(followup), "Retry included future turns");
     assert.deepEqual(errors, []);
-    console.log("Selected module, DSML source search, verified citation, conversation and legacy retry passed.");
+    console.log("Markdown replies, verified citations, stored conversations, DSML lookup and legacy retry passed.");
   } finally {
     if (browser) await browser.close();
     if (app && app.exitCode === null && app.signalCode === null) {

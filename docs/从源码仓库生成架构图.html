@@ -49,7 +49,7 @@
     <ol>
       <li><strong>打开工具目录。</strong>将 How2Trust 整个文件夹放在本机，找到里面的 <code>How2Trust.cmd</code> 和 <code>how2trust</code> 子目录。运行工具需要 Python 3.10 或更高版本。</li>
       <li><strong>找到要分析的仓库根目录。</strong>例如源码在 <code>D:\项目\订单系统\src\orders</code>，项目配置及 <code>src</code> 都位于 <code>D:\项目\订单系统</code>，就选「订单系统」这个文件夹。若手头是 GitHub 地址，先把仓库克隆到本地，或下载 ZIP 并解压到能看到项目源码的那一层。生成图只需源码，不需要 Git 历史，也无需先启动项目或安装项目的依赖。</li>
-      <li><strong>把仓库文件夹拖到启动器图标上。</strong>松开鼠标后保留弹出的命令行窗口。看到浏览器左侧的「产品结构」和中间的「产品结构图」，就可以开始浏览。直接双击启动器会打开随附的订单示例。</li>
+      <li><strong>把仓库文件夹拖到启动器图标上。</strong>松开鼠标后保留弹出的命令行窗口。看到浏览器左侧的「产品结构」和中间的「产品结构图」，就可以开始浏览。直接双击启动器会打开 How2Trust 自身源码的工作台。</li>
       <li><strong>保存图。</strong>点击工作台右上角「导出 HTML」，在浏览器的下载位置找到 <code>how2trust.html</code>。文件可改名，双击后仍可展开模块、查看关系和源码。用完本地工作台后可回到命令行窗口按 <kbd>Ctrl</kbd> + <kbd>C</kbd> 停止服务。</li>
     </ol>
     <p>想先看成品，可直接打开<a href="../examples/order-map.html">订单示例的交互架构图</a>。</p>
@@ -57,16 +57,16 @@
 
   <section id="export">
     <h2>用命令直接导出 HTML</h2>
-    <p>在资源管理器中打开 <strong>How2Trust 工具目录</strong>，点击地址栏，输入 <code>powershell</code> 并回车。下面四行可直接用随附示例跑通。</p>
-    <pre><code>$repo = '.\examples\shop'
-$out = Join-Path $env:USERPROFILE 'How2Trust输出\订单架构图.html'
+    <p>在资源管理器中打开 <strong>How2Trust 工具目录</strong>，点击地址栏，输入 <code>powershell</code> 并回车。下面四行会为 How2Trust 自身的源码生成架构图。</p>
+    <pre><code>$repo = '.\how2trust'
+$out = Join-Path $env:USERPROFILE 'How2Trust输出\How2Trust架构图.html'
 .\How2Trust.cmd export "$repo" -o "$out"
 Invoke-Item "$out"</code></pre>
     <p>换成自己的项目时，将第一行改为 <code>$repo = 'D:\项目\订单系统'</code>，第二行可改文件名。工具会创建输出目录，并在终端打印 HTML 的完整路径。每个项目用不同文件名，便于保留多份图。</p>
     <p>如果想先在工作台里浏览，在同一个 PowerShell 窗口执行 <code>.\How2Trust.cmd serve "$repo" --port 0 --open</code>。<code>--port 0</code> 会自动选择空闲端口。</p>
-    <p>使用 <strong>macOS 或 Linux</strong> 时，在 How2Trust 工具目录中运行下面任一条。将 <code>./examples/shop</code> 换成本地仓库路径即可。</p>
-    <pre><code>python3 -m how2trust serve "./examples/shop" --port 0 --open
-python3 -m how2trust export "./examples/shop" -o "$HOME/How2Trust输出/订单架构图.html"</code></pre>
+    <p>使用 <strong>macOS 或 Linux</strong> 时，在 How2Trust 工具目录中运行下面任一条。分析自己的项目时，将 <code>./how2trust</code> 换成本地仓库路径。</p>
+    <pre><code>python3 -m how2trust serve "./how2trust" --port 0 --open
+python3 -m how2trust export "./how2trust" -o "$HOME/How2Trust输出/How2Trust架构图.html"</code></pre>
     <p>导出的 HTML 内含已索引的源码和相关文本，接收者可以打开查看。源码改动后，请重新导出；如果使用本地工作台，则重新启动服务来读取新版源码。</p>
   </section>
 
@@ -76,6 +76,7 @@ python3 -m how2trust export "./examples/shop" -o "$HOME/How2Trust输出/订单�
     <ol>
       <li>在左侧依次点「交易服务」→「订单管理」→「取消订单」→ <code>DELETE /orders/{order_id}</code>。中间切换到该入口的调用图。</li>
       <li>在「方法调用链」中点击 <code>cancel_order</code> 连向 <code>OrderService.cancel</code> 的线。右侧「源码」会显示 <code>shop/api.py</code> 第 17 行的 <code>return orders.cancel(order_id)</code>。再点目标方法节点，可查看 <code>shop/orders.py</code> 第 11 行的方法定义。</li>
+      <li>当前调用图超过 12 个节点时，点「展开完整调用图」查看后续各层。小图直接显示完整范围。方法调用自身会画一条「递归调用」回环，点它可以打开调用行。可在 <a href="../examples/cookiecutter-2.6.0/workbench.html#file=cookiecutter%2Fmain.py&amp;line=143">Cookiecutter 第 143 行</a>试一下。</li>
       <li>切换到「类关系图」，查看相关类和继承关系。示例中的 <code>OrderStore</code> 继承自 <code>MemoryStore</code>。点顶部「上一级」可返回父模块。</li>
     </ol>
     <figure>
@@ -93,7 +94,7 @@ name = 订单工作台
 
 [group:交易服务/订单管理/取消订单]
 entries = shop/api.py::cancel_order</code></pre>
-    <p><code>/</code> 划分业务层级。<code>entries</code> 等号右侧填写仓库相对路径和已识别入口的处理函数名。若希望直接把普通源码文件归入一组，可以写 <code>files = shop/storage.py</code>。替换为自己仓库的真实路径和名称后，重新生成图，点击业务分组即可核对配置依据。<a href="../examples/shop/how2trust.ini">查看示例仓库的完整配置</a>。</p>
+    <p><code>/</code> 划分业务层级。<code>entries</code> 等号右侧填写仓库相对路径和已识别入口的处理函数名。若希望直接把普通源码文件归入一组，可以写 <code>files = shop/storage.py</code>。替换为自己仓库的真实路径和名称后，重新生成图，点击业务分组即可核对配置依据。</p>
   </section>
 
   <section id="semantics">
@@ -101,9 +102,12 @@ entries = shop/api.py::cancel_order</code></pre>
     <p>在本地工作台右上角点「模型设置」，选择业务解读、图上问答或两者共用，填写 API 基础地址和模型名。已有 DeepSeek 密钥环境变量时选「使用本机环境变量」，填写 <code>DEEPSEEK_API_KEY</code>，然后点「保存并应用」。也可粘贴仅在本次服务有效的 API Key，或为免鉴权的本地模型选择「无需密钥」。需要用命令行指定配置时，可按<a href="../README.md#接入本地或云端模型">供应商配置说明</a>准备 providers.json。</p>
     <pre><code>.\How2Trust.cmd serve "D:\项目\订单系统" --llm-config providers.json --open</code></pre>
     <p>打开后切到「生产业务」，点击「一键生成业务图」。工作台从整仓中选出生产源码，结合入口关系、分组依据和仓库根 README 里的术语生成讲解。在总览或模块说明里点文件与行号可查看原文。</p>
+    <p>只想了解一个流程时，直接从静态图搜索一个方法、选择模块或圈选多个节点，再点画布下方的「生成选区业务图」。默认读取选区内的实现，勾选「含直接调用」可补入直接调用方、被调方或入口绑定的证据。选择整个文件时，该文件的实现也属于选区。过大时工作台会提示缩小范围。</p>
+    <p>局部图中点分组可看成员和讲解出处，点箭头可核对实际调用。点「导出选区 HTML」保存这张图和本次解读使用的源码行段；在完整工作台可以从「已生成的选区业务图」切换，或返回原图继续选择。</p>
     <p>画布上方会显示进度。解读源码时，进度条按已完成的批次推进，列表显示正在解读或复核的批次和文件。全部批次完成后，留意「归并业务分组」「对照源码复核总览」等阶段，直到图出现在画布上。在同一服务里刷新页面可以接着看进度。</p>
     <figure><img src="images/production-generation-progress.png" alt="python-dotenv 试跑中已完成 1/3 批，另外两批仍在解读源码"></figure>
     <p>失败后，面板会保留出错阶段、原因和相关批次。遇到鉴权错误，可从面板打开「模型设置」核对密钥，保存后点击「重试生成」。同一份源码和模型配置能复用已校验、已缓存的批次。</p>
+    <p>改过代码后，用同一路径重新打开仓库，再点「一键生成业务图」。工作台会重建静态调用关系，并逐步检查上次解读的输入。源码片段、调用条件及证据位置相同的步骤可直接复用。例如，入口改变了何时调用发货函数，即使发货函数本身没有改动，涉及触发时机的讲解也要重新核对。进度条会显示完整复用的批次数。</p>
     <p>图太小时，点图标题右侧的「全屏查看」。用滚轮缩放，拖动空白处平移，或点「适应画布」看整张图。按 Esc 或点「退出全屏」返回。离线 HTML 也可以全屏阅读。</p>
     <p>切到「模块协作」，选一个模块和「它调用谁」或「谁调用它」。点击模块间的箭头，在检查器里查看每一次调用、对应分支和源码。全屏时点「检查器」可收起面板，继续读图。</p>
     <p>检查器在图右侧时，向左拖动它边缘的分隔条可加宽阅读区，向右拖动可缩窄。也可以用 Tab 选中分隔条，再按左右方向键微调。双击分隔条或按回车恢复默认宽度。</p>
@@ -113,13 +117,14 @@ entries = shop/api.py::cancel_order</code></pre>
       <li>在内部图点「返回模块协作」，可以回到下钻前的模块、方向和关系页。需要做批注或问答时，切到矩形圈选工具，单击或拖动只改变选区。要再次下钻，切回手形工具。</li>
     </ol>
     <p>切到「整仓结构」可以找回测试夹具。点击「导出 HTML」即可把三个视图保存在同一个离线文件里。</p>
-    <p>打开<a href="../audit/fulfillment-deepseek-improved/architecture.html">多仓订单履约示例</a>。在首页「多个入口共用的实现」中展开 <code>Desk.retry</code>，分别查看补货、取消和退货在哪一行重试等待订单。点击退货路径的调用行可看到它受品相条件约束。用「首页图层」可以切到源码与配置；有内部职责分组时也可单独查看。在本地服务中，选中业务分组或入口即可连续追问。</p>
+    <p>在「生产业务」画布标题旁打开「首页图层」。同时有入口分组和无显式入口的分组时，可以选择「全部业务分组」「入口业务能力」或「内部职责」。库项目缺少显式入口时，所有分组都在「业务能力」中。「源码与配置」可直接查看生产目录、入口及配置分组。切换图层无需请求模型，从分组详情切换也会回到对应的首页。旧 HTML 内嵌的是当时的界面，可在新版工作台重新导出。</p>
+    <p>打开<a href="../audit/fulfillment-deepseek-improved/architecture.html">多仓订单履约示例</a>。在首页「多个入口共用的实现」中展开 <code>Desk.retry</code>，分别查看补货、取消和退货在哪一行重试等待订单。点击退货路径的调用行可看到它受品相条件约束。在本地服务中，选中业务分组或入口即可连续追问。</p>
   </section>
 
   <section id="help">
     <h2>常见问题</h2>
     <dl>
-      <dt>拖入后浏览器没有打开，或者打开的是示例</dt>
+      <dt>拖入后浏览器没有打开，或者显示了其他仓库</dt>
       <dd>在工具目录打开 PowerShell，执行 <code>.\How2Trust.cmd serve "D:\项目\订单系统" --port 0 --open</code>，把引号内改为自己的仓库。若终端已打印 <code>http://127.0.0.1:…</code>，复制完整地址到浏览器。若提示找不到 Python，确认 <code>py -3 --version</code> 或 <code>python --version</code> 能显示 3.10 或更高版本。</dd>
       <dt>只看到「源码模块」，没有预想中的业务名</dt>
       <dd>先从「源码模块」展开到文件。接入模型后，点「生成业务解读」查看模型根据源码归纳的职责。团队已有固定业务分类时，也可用 <code>how2trust.ini</code> 指定分组。配置后仍找不到入口，可打开「分析记录」查看未匹配的选择器。</dd>
